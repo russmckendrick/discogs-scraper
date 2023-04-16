@@ -270,16 +270,11 @@ cover:
 genres: {formatted_genres}
 styles: {formatted_styles}
 ---
-
 ## Tracklisting
 {formatted_tracklist}
-
 {spotify_section}
-
 {videos_section}
-
 ## Notes
-
 | Notes          |             |
 | ---------------| ----------- |
 | Release Year   | {released} |
@@ -289,7 +284,6 @@ styles: {formatted_styles}
 | Catalog Number | {catalog_no} |
 
 {formatted_notes}
-
 """
         with open(f"{post_folder}/index.md", "w") as md_file:
             md_file.write(content)
