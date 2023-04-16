@@ -6,6 +6,7 @@ from datetime import datetime
 import discogs_client
 import time
 from urllib.request import urlretrieve
+from tqdm import tqdm
 
 discogs_csv_file = "discogs.csv"
 
@@ -53,12 +54,13 @@ def format_videos(videos):
         title = video.title
         duration = video.duration
         url = video.url
-        youtube_id = extract_youtube_id(url)
-        if youtube_id:
-            if idx == 0:
-                formatted_videos.append(f"{{{{< youtube id=\"{youtube_id}\" title=\"{title}\" >}}}}")
-            else:
-                formatted_videos.append(f"- [{title}]({url})")
+        if url:  # Add this check
+            youtube_id = extract_youtube_id(url)
+            if youtube_id:
+                if idx == 0:
+                    formatted_videos.append(f"{{{{< youtube id=\"{youtube_id}\" title=\"{title}\" >}}}}")
+                else:
+                    formatted_videos.append(f"- [{title}]({url})")
     return "\n".join(formatted_videos)
 
 # Function to format the album notes
@@ -96,125 +98,123 @@ if not os.path.exists(output_folder):
 # Parse the CSV file
 with open(discogs_csv_file, 'r') as csv_file:
     csv_reader = csv.DictReader(csv_file)
-    for row in csv_reader:
-        catalog_no = escape_quotes(row['Catalog#'])
-        artist = escape_quotes(row['Artist'])
-        title = escape_quotes(row['Title'])
-        label = escape_quotes(row['Label'])
-        release_format = escape_quotes(row['Format'])
-        rating = row['Rating']
-        released = row['Released']
-        release_id = row['release_id']
-        date_added = row['Date Added']
-        media_condition = escape_quotes(row['Collection Media Condition'])
-        sleeve_condition = escape_quotes(row['Collection Sleeve Condition'])
-        notes = escape_quotes(row['Collection Notes'])
-        date_added = datetime.strptime(date_added, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        slug = sanitize_slug(title)
+    total_rows = sum(1 for _ in csv_reader)
+    csv_file.seek(0)
+    csv_reader = csv.DictReader(csv_file)
+    for row in tqdm(csv_reader, desc="Processing CSV Rows", total=total_rows):
+            catalog_no = escape_quotes(row['Catalog#'])
+            artist = escape_quotes(row['Artist'])
+            title = escape_quotes(row['Title'])
+            label = escape_quotes(row['Label'])
+            release_format = escape_quotes(row['Format'])
+            rating = row['Rating']
+            released = row['Released']
+            release_id = row['release_id']
+            date_added = row['Date Added']
+            media_condition = escape_quotes(row['Collection Media Condition'])
+            sleeve_condition = escape_quotes(row['Collection Sleeve Condition'])
+            notes = escape_quotes(row['Collection Notes'])
+            date_added = datetime.strptime(date_added, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+            slug = sanitize_slug(title)
 
-        # Create post folder
-        post_folder = os.path.join(output_folder, slug+"-"+release_id)
-        if not os.path.exists(post_folder):
-            os.makedirs(post_folder)
-        release = discogs_client.release(release_id)
+            # Create post folder
+            post_folder = os.path.join(output_folder, slug+"-"+release_id)
+            if not os.path.exists(post_folder):
+                os.makedirs(post_folder)
+            release = discogs_client.release(release_id)
 
-        # Get album artwork URLs
-        if release.images and len(release.images) > 0:
-            image_url = release.images[0].get("uri", "")
-            image_url_150 = release.images[0].get("uri150", "")
+            # Get album artwork URLs
+            if release.images and len(release.images) > 0:
+                image_url = release.images[0].get("uri", "")
+                image_url_150 = release.images[0].get("uri150", "")
+                image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
+                image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
+                download_image(image_url, image_filename)
+                download_image(image_url_150, image_filename_150)
+            else:
+                image_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+                image_url_150 = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+                image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
+                image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
+                download_image(image_url, image_filename)
+                download_image(image_url_150, image_filename_150)
+
+            # Download images
             image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
             image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
             download_image(image_url, image_filename)
             download_image(image_url_150, image_filename_150)
-        else:
-            image_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
-            image_url_150 = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
-            image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
-            image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
-            download_image(image_url, image_filename)
-            download_image(image_url_150, image_filename_150)
 
-        # Download images
-        image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
-        image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
-        download_image(image_url, image_filename)
-        download_image(image_url_150, image_filename_150)
+            # Get tracklisting
+            tracklist = release.tracklist
+            # print(tracklist)
+            formatted_tracklist = format_tracklist(tracklist)
 
-        # Get tracklisting
-        tracklist = release.tracklist
-        # print(tracklist)
-        formatted_tracklist = format_tracklist(tracklist)
+            # Get videos
+            videos = release.videos
+            # print(videos)
+            formatted_videos = format_videos(videos)
 
-        # Get videos
-        videos = release.videos
-        # print(videos)
-        formatted_videos = format_videos(videos)
+            # Get genres
+            genres = release.genres
+            # print(genres)
+            formatted_genres = json.dumps(genres)
 
-        # Get genres
-        genres = release.genres
-        # print(genres)
-        formatted_genres = json.dumps(genres)
+            # Get styles
+            styles = release.styles
+            # print(genres)
+            formatted_styles = json.dumps(styles)
 
-        # Get styles
-        styles = release.styles
-        # print(genres)
-        formatted_styles = json.dumps(styles)
+            # Get album notes
+            album_notes = release.notes
+            # print(album_notes)
+            formatted_notes = format_notes(album_notes)
 
-        # Get album notes
-        album_notes = release.notes
-        # print(album_notes)
-        formatted_notes = format_notes(album_notes)
+            release_url = release.url
+            # print(release_url)
 
-        release_url = release.url
-        # print(release_url)
+            # Add a 2-second delay between requests to avoid hitting the rate limit
+            time.sleep(2)
 
-        # Print some info
-        print(artist)
-        print(title)
-        print(release_id)
+            # Check if formatted_videos is not empty
+            if formatted_videos.strip():
+                videos_section = f"## Videos\n{formatted_videos}\n"
+            else:
+                videos_section = ""
 
-        # Add a 2-second delay between requests to avoid hitting the rate limit
-        time.sleep(2)
+            content = f"""---
+    title: "{artist} - {title}"
+    artist: "{artist}"
+    album_name: "{title}"
+    date: {date_added}
+    release_id: "{release_id}"
+    slug: "{slug}-{release_id}"
+    hideSummary: true
+    cover:
+        image: "{slug}-{release_id}.jpg"
+        alt: "{title} by {artist}"
+        caption: "{title} by {artist}"
+    genres: {formatted_genres}
+    styles: {formatted_styles}
+    ---
 
-        # Check if formatted_videos is not empty
-        if formatted_videos.strip():
-            videos_section = f"## Videos\n{formatted_videos}\n"
-        else:
-            videos_section = ""
+    ## Tracklisting
+    {formatted_tracklist}
 
-        content = f"""---
-title: "{artist} - {title}"
-artist: "{artist}"
-album_name: "{title}"
-date: {date_added}
-release_id: "{release_id}"
-slug: "{slug}-{release_id}"
-hideSummary: true
-cover:
-    image: "{slug}-{release_id}.jpg"
-    alt: "{title} by {artist}"
-    caption: "{title} by {artist}"
-genres: {formatted_genres}
-styles: {formatted_styles}
----
+    {videos_section}
 
-## Tracklisting
-{formatted_tracklist}
+    ## Notes
 
-{videos_section}
+    | Notes          |             |
+    | ---------------| ----------- |
+    | Release Year   | {released} |
+    | Discogs Link   | [{artist} - {title}]({release_url}) |
+    | Label          | {label} |
+    | Format         | {release_format} |
+    | Catalog Number | {catalog_no} |
 
-## Notes
+    {formatted_notes}
 
-| Notes          |             |
-| ---------------| ----------- |
-| Release Year   | {released} |
-| Discogs Link   | [{artist} - {title}]({release_url}) |
-| Label          | {label} |
-| Format         | {release_format} |
-| Catalog Number | {catalog_no} |
-
-{formatted_notes}
-
-"""
-        with open(f"{post_folder}/index.md", "w") as md_file:
-            md_file.write(content)
+    """
+            with open(f"{post_folder}/index.md", "w") as md_file:
+                md_file.write(content)
