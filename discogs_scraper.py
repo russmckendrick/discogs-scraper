@@ -272,6 +272,7 @@ styles: {formatted_styles}
 ---
 ## Tracklisting
 {formatted_tracklist}
+
 {spotify_section}
 {videos_section}
 ## Notes
