@@ -11,6 +11,7 @@ from urllib.request import urlretrieve
 from tqdm import tqdm
 
 discogs_csv_file = "discogs.csv"
+output_folder = "website/content/albums"
 
 # Function to sanitize a slug
 def sanitize_slug(slug):
@@ -155,7 +156,6 @@ spotify_client_secret = secrets['spotify_client_secret']
 discogs_client = discogs_client.Client("AlbumScraper/0.1", user_token=discogs_access_token)
 
 # Create folders to store the markdown files and images
-output_folder = "website/content/albums"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
