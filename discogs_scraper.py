@@ -12,6 +12,17 @@ from tqdm import tqdm
 
 discogs_csv_file = "discogs.csv"
 
+# Function to sort the dates
+def parse_date(date_string, formats):
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_string, fmt)
+        except ValueError:
+            pass
+    raise ValueError(f"time data '{date_string}' does not match any of the provided formats")
+
+date_formats = ["%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M"]
+
 # Function to sanitize a slug
 def sanitize_slug(slug):
     slug = slug.encode("ascii", "ignore").decode("ascii")
@@ -179,11 +190,10 @@ with open(discogs_csv_file, 'r') as csv_file:
             rating = row['Rating']
             released = row['Released']
             release_id = row['release_id']
-            date_added = row['Date Added']
             media_condition = escape_quotes(row['Collection Media Condition'])
             sleeve_condition = escape_quotes(row['Collection Sleeve Condition'])
             notes = escape_quotes(row['Collection Notes'])
-            date_added = datetime.strptime(date_added, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+            date_added = parse_date(row['Date Added'], date_formats).strftime("%Y-%m-%d")
             slug = sanitize_slug(title)
 
             progress_bar.set_description(f"Processing {title} by {artist} ({release_id})")
