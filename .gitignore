@@ -1,8 +1,10 @@
 secrets.json
-backups
 website
-backups/*
 website/*
+backups
+backups/*
+logs
+logs/*
 
 dev.py
 newwebsite
