@@ -3,3 +3,7 @@ backups
 website
 backups/*
 website/*
+
+dev.py
+newwebsite
+collection_cache.json
