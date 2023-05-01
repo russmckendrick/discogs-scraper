@@ -64,6 +64,12 @@ else:
 # Determine the number of items to process
 num_items = len(collection) if process_all else num_items
 
+# Function to escape quotes
+def escape_quotes(text):
+    text = text.replace('"', '\\"')
+    text = re.sub(r'\s\(\d+\)', '', text)  # Remove brackets and numbers inside them
+    return text
+
 # Function to sanitize a slug
 def sanitize_slug(slug):
     slug = slug.encode("ascii", "ignore").decode("ascii")
@@ -188,8 +194,8 @@ def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
     additional_videos = videos[1:] if videos and len(videos) > 1 else None
 
     rendered_content = template.render(
-        title="{artist} - {album_name}".format(artist=artist, album_name=album_name),
-        artist=artist,
+        title="{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
+        artist=escape_quotes(artist),
         album_name=album_name,
         date_added=datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         release_id=release_id,
@@ -295,7 +301,7 @@ with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{tota
         create_markdown_file(release_data)
 
         # Add a 2-second delay between requests to avoid hitting the rate limit
-        time.sleep(2)
+        time.sleep(0)
 
 # Save the updated cache to the file
 with open(CACHE_FILE, 'w') as f:

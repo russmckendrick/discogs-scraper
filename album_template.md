@@ -1,15 +1,15 @@
 ---
-title: "{{ title }}"
-artist: "{{ artist }}"
-album_name: "{{ album_name }}"
+title: "{{ title | replace('\"','') | safe }}"
+artist: "{{ artist | replace('\"','') | safe }}"
+album_name: "{{ album_name | replace('\"','') | safe }}"
 date: {{ date_added }}
 release_id: "{{ release_id }}"
 slug: "{{ slug }}"
 hideSummary: true
 cover:
     image: "{{ cover_filename }}"
-    alt: "{{ album_name }} by {{ artist }}"
-    caption: "{{ album_name }} by {{ artist }}"
+    alt: "{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}"
+    caption: "{{ album_name  | replace('\"','') | safe }} by {{ artist  | replace('\"','') | safe }}"
 genres: [{% for genre in genres %}"{{ genre }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 ---
