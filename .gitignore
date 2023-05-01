@@ -1,3 +1,4 @@
+# stuff which should not be in the repo
 secrets.json
 website
 website/*
@@ -5,7 +6,4 @@ backups
 backups/*
 logs
 logs/*
-
-dev.py
-newwebsite
 collection_cache.json
