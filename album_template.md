@@ -19,13 +19,14 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 
 {% if spotify %}
 ## Spotify
-{% raw %}{{< spotify type="album" id="{{ spotify }}" width="100%" height="500" >}}{% endraw %}
+{% raw %}{{< spotify type="album" id="{% endraw %}{{ spotify }}{% raw %}" width="100%" height="500" >}}{% endraw %}
 {% endif %}
 
+{% if first_video_id %}
 ## Videos
-{% raw %}{{< youtube id="{{ first_video_id }}" title="{{ first_video_title }}" >}}{% endraw %}{% if additional_videos %}{% for video in additional_videos %}
+{% raw %}{{< youtube id="{% endraw %}{{ first_video_id }}{% raw %}" title="{% endraw %}{{ first_video_title }}{% raw %}" >}}{% endraw %}{% if additional_videos %}{% for video in additional_videos %}
 - [{{ video.title }}]({{ video.url }}){% endfor %}{% endif %}
-
+{% endif %}
 ## Notes
 | Notes          |             |
 | ---------------| ----------- |

@@ -1,28 +1,68 @@
-import csv
+import sys
+import json
 import os
 import re
-import json
 import requests
-import base64
-import time
 import discogs_client
-from datetime import datetime
+import time
+import logging
+import base64
+from pathlib import Path
 from urllib.request import urlretrieve
+from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
+from datetime import datetime
 
-discogs_csv_file = "discogs.csv"
-output_folder = "website/content/albums"
+CACHE_FILE = 'collection_cache.json'
+OUTPUT_DIRECTORY = 'website/content/albums'
 
-# Function to sort the dates
-def parse_date(date_string, formats):
-    for fmt in formats:
-        try:
-            return datetime.strptime(date_string, fmt)
-        except ValueError:
-            pass
-    raise ValueError(f"time data '{date_string}' does not match any of the provided formats")
+# Create logs folder if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
 
-date_formats = ["%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M"]
+# Get the current date and time to append to the log file's name
+current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+# Configure logging
+logging.basicConfig(
+    filename=f'logs/app_{current_time}.log',
+    filemode='w',
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# Load access token and username from secrets.json
+with open('secrets.json', 'r') as f:
+    secrets = json.load(f)
+
+discogs_access_token = secrets['discogs_access_token']
+discogs_username = secrets['discogs_username']
+spotify_client_id = secrets['spotify_client_id']
+spotify_client_secret = secrets['spotify_client_secret']
+
+# Initialize Discogs client
+discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
+
+# Get user information and collection
+user = discogs.identity()
+collection = discogs.user(discogs_username).collection_folders[0].releases
+
+# Check if the --all flag is passed
+process_all = '--all' in sys.argv
+
+# Check if the --num-items flag is passed and set the number of items to process
+num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
+if num_items_override:
+    try:
+        num_items = int(num_items_override.split('=')[1])
+    except ValueError:
+        logging.error("Invalid value for --num-items flag. Using default value (10).")
+        num_items = 10
+else:
+    num_items = 10
+
+# Determine the number of items to process
+num_items = len(collection) if process_all else num_items
 
 # Function to sanitize a slug
 def sanitize_slug(slug):
@@ -31,30 +71,17 @@ def sanitize_slug(slug):
     slug = slug.strip().lower().replace(' ', '-').replace('"', '')
     return slug
 
-# Function to escape quotes
-def escape_quotes(text):
-    text = text.replace('"', '\\"')
-    text = re.sub(r'\s\(\d+\)', '', text)  # Remove brackets and numbers inside them
-    return text
-
 # Function to download an image
 def download_image(url, filename):
+    if os.path.exists(filename):
+        logging.info(f"Image file {filename} already exists. Skipping download.")
+        return
+
     try:
+        logging.info(f"Image file {filename} doesn't exists. Downloading.")
         urlretrieve(url, filename)
     except Exception as e:
-        print(f'Unable to download image {url}, error {e}')
-
-# Function to format the tracklist
-def format_tracklist(tracklist):
-    formatted_tracklist = []
-    for index, track in enumerate(tracklist, start=1):
-        title = track.title
-        duration = track.duration
-        if duration:
-            formatted_tracklist.append(f"{index}. {title} ({duration})")
-        else:
-            formatted_tracklist.append(f"{index}. {title}")
-    return "\n".join(formatted_tracklist)
+        logging.error(f'Unable to download image {url}, error {e}')
 
 # Function to extract the YouTube video ID from a URL
 def extract_youtube_id(url):
@@ -62,34 +89,6 @@ def extract_youtube_id(url):
     if youtube_id_match:
         return youtube_id_match.group(0)
     return None
-
-# Function to format the video list
-def format_videos(videos):
-    formatted_videos = []
-    for idx, video in enumerate(videos):
-        title = video.title
-        url = video.url
-        if url is not None:
-            youtube_id = extract_youtube_id(url)
-            if youtube_id:
-                if idx == 0:
-                    formatted_videos.append(f"{{{{< youtube id=\"{youtube_id}\" title=\"{title}\" >}}}}")
-                else:
-                    formatted_videos.append(f"- [{title}]({url})")
-    return "\n".join(formatted_videos)
-
-
-# Function to format the album notes
-def format_notes(album_notes):
-    if not album_notes:
-        return ""
-    formatted_notes = album_notes.replace("\n", " ")
-    formatted_notes = re.sub(
-        r'\[url=(https?://[^\]]+)\]([^\[]+)\[/url\]',
-        r'[\2](\1)',
-        formatted_notes
-    )
-    return formatted_notes
 
 # Spotify functions
 def get_spotify_id(artist, album_name):
@@ -128,173 +127,184 @@ def get_spotify_token():
         return access_token
     return None
 
-def get_spotify_embed_code(spotify_id):
-    if spotify_id:
-        return f'{{{{< spotify type="album" id="{spotify_id}" width="100%" height="500" >}}}}'
-    return ""
-
-class MissingSecretError(Exception):
-    pass
-
-def load_secrets(file_path, required_secrets):
-    with open(file_path, "r") as secret_file:
-        secrets = json.load(secret_file)
-
-    # Check for missing secrets
-    missing_secrets = [key for key in required_secrets if key not in secrets]
-    if missing_secrets:
-        raise MissingSecretError(f"Missing secrets in {file_path}: {', '.join(missing_secrets)}")
-
-    return secrets
-
-# Define required secrets
-required_secrets = ["discogs_access_token", "spotify_client_id", "spotify_client_secret"]
-
-# Load secrets from the file
-secrets_file = "secrets.json"
-try:
-    secrets = load_secrets(secrets_file, required_secrets)
-except MissingSecretError as e:
-    print(e)
-    exit(1)
-
-# Access the secrets
-discogs_access_token = secrets['discogs_access_token']
-spotify_client_id = secrets['spotify_client_id']
-spotify_client_secret = secrets['spotify_client_secret']
-
-# Create a Discogs client
-discogs_client = discogs_client.Client("AlbumScraper/0.1", user_token=discogs_access_token)
-
-# Create folders to store the markdown files and images
-if not os.path.exists(output_folder):
-    os.makedirs(output_folder)
-
-# Parse the CSV file
-with open(discogs_csv_file, 'r') as csv_file:
-    csv_reader = csv.DictReader(csv_file)
-    total_rows = sum(1 for _ in csv_reader)
-    csv_file.seek(0)
-    csv_reader = csv.DictReader(csv_file)
-    next(csv_reader)  # Skip the header row
-
-    progress_bar = tqdm(csv_reader, total=total_rows - 1)
-
-    for row in progress_bar:
-        try:
-            catalog_no = escape_quotes(row['Catalog#'])
-            artist = escape_quotes(row['Artist'])
-            title = escape_quotes(row['Title'])
-            label = escape_quotes(row['Label'])
-            release_format = escape_quotes(row['Format'])
-            rating = row['Rating']
-            released = row['Released']
-            release_id = row['release_id']
-            media_condition = escape_quotes(row['Collection Media Condition'])
-            sleeve_condition = escape_quotes(row['Collection Sleeve Condition'])
-            notes = escape_quotes(row['Collection Notes'])
-            date_added = parse_date(row['Date Added'], date_formats).strftime("%Y-%m-%d")
-            slug = sanitize_slug(title)
-
-            progress_bar.set_description(f"Processing {title} by {artist} ({release_id})")
-
-        except Exception as e:
-            print(f"Error processing row: {row}\nError: {e}")
-
-        # Create post folder
-        post_folder = os.path.join(output_folder, slug+"-"+release_id)
-        if not os.path.exists(post_folder):
-            os.makedirs(post_folder)
-        release = discogs_client.release(release_id)
-
-        # Get album artwork URLs
-        if release.images and len(release.images) > 0:
-            image_url = release.images[0].get("uri", "")
-            image_url_150 = release.images[0].get("uri150", "")
-            image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
-            image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
-            download_image(image_url, image_filename)
-            download_image(image_url_150, image_filename_150)
+# Function to format the tracklist
+def format_tracklist(tracklist):
+    formatted_tracklist = []
+    for index, track in enumerate(tracklist, start=1):
+        title = track["title"]
+        duration = track["duration"]
+        if duration:
+            formatted_tracklist.append(f'{index}. {title} ({duration})')
         else:
-            image_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
-            image_url_150 = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
-            image_filename = os.path.join(post_folder, f"{slug}-{release_id}.jpg")
-            image_filename_150 = os.path.join(post_folder, f"{slug}-{release_id}-150.jpg")
-            download_image(image_url, image_filename)
-            download_image(image_url_150, image_filename_150)
+            formatted_tracklist.append(f'{index}. {title}')
+    return "\n".join(formatted_tracklist)
 
-        # Get tracklisting
-        tracklist = release.tracklist
-        formatted_tracklist = format_tracklist(tracklist)
 
-        # Get videos
-        videos = release.videos
-        formatted_videos = format_videos(videos)
+def format_release_formats(release_formats):
+    formatted_formats = []
+    
+    for fmt in release_formats:
+        format_details = [fmt['name']]
+        if 'qty' in fmt and fmt['qty'] != '1':
+            format_details.append(f"{fmt['qty']}×")
+        
+        if 'descriptions' in fmt:
+            format_details.extend(fmt['descriptions'])
+        
+        if 'text' in fmt:
+            format_details.append(f"({fmt['text']})")
+        
+        formatted_formats.append(' '.join(format_details))
+    
+    return ', '.join(formatted_formats)
 
-        # Get genres
-        genres = release.genres
-        # print(genres)
-        formatted_genres = json.dumps(genres)
+def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
+    artist = item_data["Artist Name"]
+    album_name = item_data["Album Title"]
+    release_id = str(item_data["Release ID"])
+    cover_url = item_data["Album Cover URL"]
+    slug = item_data["Slug"]
+    folder_path = Path(output_dir) / slug
 
-        # Get styles
-        styles = release.styles
-        formatted_styles = json.dumps(styles)
+    # Create the output directory if it doesn't exist
+    folder_path.mkdir(parents=True, exist_ok=True)
 
-        # Get album notes
-        album_notes = release.notes
-        formatted_notes = format_notes(album_notes)
+    # Download album cover
+    cover_filename = f"{slug}.jpg"
+    cover_path = folder_path / cover_filename
+    if cover_url:
+        download_image(cover_url, cover_path)
+    else:
+        missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+        download_image(missing_cover_url, cover_path)
 
-        # Get discogs release URL
+    # Render markdown file using Jinja2 template
+    env = Environment(loader=FileSystemLoader('.'))
+    template = env.get_template('album_template.md')
+    genres = item_data.get("Genre", [])
+    styles = item_data.get("Style", [])
+    videos = item_data["Videos"]
+    first_video = videos[0] if videos else None
+    additional_videos = videos[1:] if videos and len(videos) > 1 else None
+
+    rendered_content = template.render(
+        title="{artist} - {album_name}".format(artist=artist, album_name=album_name),
+        artist=artist,
+        album_name=album_name,
+        date_added=datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        release_id=release_id,
+        slug=slug,
+        cover_filename=cover_filename,
+        genres=genres,
+        styles=styles,
+        track_list=format_tracklist(item_data["Track List"]),
+        first_video_id=extract_youtube_id(first_video["url"]) if first_video else None,
+        first_video_title=first_video["title"] if first_video else None,
+        additional_videos=additional_videos,
+        release_date=item_data["Release Date"],
+        release_url=item_data["Release URL"],
+        label=item_data["Label"],
+        release_formats=format_release_formats(item_data["Release Formats"]),
+        catalog_number=item_data["Catalog Number"],
+        notes=item_data["Notes"],
+        spotify=item_data["Spotify ID"],
+    )
+
+    # Save the rendered content to the markdown file
+    with open(folder_path / "index.md", "w") as f:
+        f.write(rendered_content)
+    logging.info(f"Saved/Updated file {folder_path}.index.md")
+
+# Load collection cache or create an empty cache
+if os.path.exists(CACHE_FILE):
+    with open(CACHE_FILE, 'r') as f:
+        collection_cache = json.load(f)
+else:
+    collection_cache = {}
+
+# Define a function to process an item and add it to the cache
+def process_item(item, cache):
+    release = item.release
+    release_id = release.id
+
+    if str(release_id) not in cache:
+        artist_name = release.artists[0].name
+        album_title = release.title
+        date_added = item.date_added.isoformat() if item.date_added else None
+        genre = release.genres
+        style = release.styles
+        label = release.labels[0].name if release.labels else None
+        catalog_number = release.labels[0].catno if release.labels else None
+        release_formats = [
+            {
+                key: fmt[key] for key in ["name", "qty", "text", "descriptions"] if key in fmt
+            }
+            for fmt in release.formats
+        ] if release.formats else None
+        release_date = release.year
+        country = release.country
+        rating = release.community.rating.average
+        track_list = [{'number': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist]
+        cover_url = release.images[0]['resource_url'] if release.images else None
+        videos = [{'title': video.title, 'url': video.url} for video in release.videos] if release.videos else None
         release_url = release.url
+        notes = release.notes
+        credits = [str(credit) for credit in release.extraartists] if hasattr(release, 'extraartists') else None
+        slug = sanitize_slug(f"{album_title}-{release_id}")
+        spotify_id = get_spotify_id(artist_name, album_title)
 
-        spotify_id = get_spotify_id(artist, title)
-        spotify_embed_code = get_spotify_embed_code(spotify_id)
+        cache[str(release_id)] = {
+            "Release ID": release_id,
+            "Artist Name": artist_name,
+            "Album Title": album_title,
+            "Slug": slug,
+            "Date Added": date_added,
+            "Genre": genre,
+            "Style": style,
+            "Label": label,
+            "Catalog Number": catalog_number,
+            "Release Formats": release_formats,
+            "Release Date": release_date,
+            "Country": country,
+            "Rating": rating,
+            "Track List": track_list,
+            "Album Cover URL": cover_url,
+            "Videos": videos,
+            "Release URL": release_url,
+            "Notes": notes,
+            "Credits": credits,
+            "Spotify ID": spotify_id,
+        }
+
+# Iterate through the collection, update the cache, and create the markdown file
+with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
+    for i, item in enumerate(collection):
+        if i >= num_items:
+            break
+
+        # Process the current item and update the cache
+        process_item(item, collection_cache)
+        release_id = item.release.id
+        release_data = collection_cache[str(release_id)]
+
+        # Update the progress bar with current item information
+        progress_bar.set_description(f'Currently Processing: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
+        progress_bar.update(1)
+
+        # Create the markdown file
+        create_markdown_file(release_data)
 
         # Add a 2-second delay between requests to avoid hitting the rate limit
         time.sleep(2)
 
-        # Check if spotify_embed_code is not empty
-        if spotify_embed_code.strip():
-            spotify_section = f"## Spotify\n{spotify_embed_code}\n"
-        else:
-            spotify_section = ""
+# Save the updated cache to the file
+with open(CACHE_FILE, 'w') as f:
+    json.dump(collection_cache, f, indent=4)
 
-        # Check if formatted_videos is not empty
-        if formatted_videos.strip():
-            videos_section = f"## Videos\n{formatted_videos}\n"
-        else:
-            videos_section = ""
-
-        content = f"""---
-title: "{artist} - {title}"
-artist: "{artist}"
-album_name: "{title}"
-date: {date_added}
-release_id: "{release_id}"
-slug: "{slug}-{release_id}"
-hideSummary: true
-cover:
-    image: "{slug}-{release_id}.jpg"
-    alt: "{title} by {artist}"
-    caption: "{title} by {artist}"
-genres: {formatted_genres}
-styles: {formatted_styles}
----
-## Tracklisting
-{formatted_tracklist}
-
-{spotify_section}
-{videos_section}
-## Notes
-| Notes          |             |
-| ---------------| ----------- |
-| Release Year   | {released} |
-| Discogs Link   | [{artist} - {title}]({release_url}) |
-| Label          | {label} |
-| Format         | {release_format} |
-| Catalog Number | {catalog_no} |
-
-{formatted_notes}
-"""
-        with open(f"{post_folder}/index.md", "w") as md_file:
-            md_file.write(content)
+# Check if the --num-items flag is passed and set the number of items to process
+num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
+if num_items_override:
+    try:
+        num_items = int(num_items_override.split('=')[1])
+    except ValueError:
+        logging.error("Invalid value for --num-items flag. Using default value (10).")
