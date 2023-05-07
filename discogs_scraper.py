@@ -16,10 +16,10 @@ from tqdm import tqdm
 from datetime import datetime
 
 # Set delay between requests and define cache and output directories
-DELAY = 1
+DELAY = 2
 CACHE_FILE = 'collection_cache.json'
 OUTPUT_DIRECTORY = 'website/content/posts'
-ARTIST_IMAGES_DIRECTORY = "website/content/artist"
+ARTIST_DIRECTORY = "website/content/artist"
 
 # Create logs folder if it doesn't exist
 if not os.path.exists('logs'):
@@ -295,7 +295,7 @@ def format_release_formats(release_formats):
 
     return ', '.join(formatted_formats)
 
-def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY):
+def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
     """
     Creates a markdown file for an artist using the provided artist data and saves it to the specified directory.
 
@@ -348,7 +348,7 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY)
         f.write(rendered_content)
     logging.info(f"Saved artist file {artist_file_path}")
 
-def create_markdown_file(item_data, output_dir=Path("output")):
+def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     """
     Creates a markdown file for the given album data and saves it in the output directory.
 

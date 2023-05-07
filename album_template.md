@@ -14,7 +14,7 @@ genres: [{% for genre in genres %}"{{ genre }}"{% if not loop.last %}, {% endif 
 styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 ---
 
-![{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}]({{ cover_filename }})
+{% raw %}{{< img src="{% endraw %}{{ cover_filename }}{% raw %}" title="{% endraw %}{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}{% raw %}" >}}{% endraw %}
 
 <!-- section break -->
 
