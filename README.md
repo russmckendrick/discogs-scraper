@@ -1,6 +1,6 @@
 # Discogs Scraper 🎵
 
-A basic scraper for generating files for [https://www.mckendrick.rocks](https://www.mckendrick.rocks) 🎸.
+A basic scraper for generating files for [https://www.mckendrick.rocks/](https://www.mckendrick.rocks/) 🎸.
 
 While this was initially created for personal use, feel free to use it if you find it helpful! 😃 Although the documentation is minimal, the code is fairly straightforward.
 
