@@ -18,6 +18,40 @@ To customize the scraper for your needs, create a copy of the `secrets.json.exam
 
 The scraper fetches data from the Discogs API and processes the information to generate markdown files and download images. This data can then be used to create a static site showcasing your music collection 🎧.
 
+## Running the Scraper 🏃‍♂️
+
+The scraper can be run using the following commands:
+
+To process just 10 releases every 2 seconds run the script without any flags;
+
+```bash
+$ python3 discogs_scraper.py
+```
+
+You can add the `--all` flag to process all releases in your collection;
+
+```bash
+$ python3 discogs_scraper.py --all
+```
+
+You can also add the `--num-items` flag to process a specific number of releases;
+
+```bash
+$ python3 discogs_scraper.py --num-items 100
+```
+
+Finally, you can override the default 2 second delay between requests using the `--delay` flag, this is not recommended as it may cause issues with the Discogs API so be careful;
+
+```bash
+$ python3 discogs_scraper.py --delay 0
+```
+
+You can also combine the flags to process a specific number of releases without any delay;
+
+```bash
+$ python3 discogs_scraper.py --all --delay 0
+```
+
 ## Contribution 🤝
 
 If you'd like to contribute or suggest improvements, feel free to submit a pull request or open an issue on GitHub. We appreciate your input! 🌟
