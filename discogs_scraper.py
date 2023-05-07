@@ -1,3 +1,4 @@
+# Import required libraries and modules
 import sys
 import json
 import os
@@ -14,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
 from datetime import datetime
 
+# Set delay between requests and define cache and output directories
 DELAY = 1
 CACHE_FILE = 'collection_cache.json'
 OUTPUT_DIRECTORY = 'website/content/posts'
@@ -26,7 +28,7 @@ if not os.path.exists('logs'):
 # Get the current date and time to append to the log file's name
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-# Configure logging
+# Configure logging with the log file's name, format, and log level
 logging.basicConfig(
     filename=f'logs/app_{current_time}.log',
     filemode='w',
@@ -38,22 +40,23 @@ logging.basicConfig(
 with open('secrets.json', 'r') as f:
     secrets = json.load(f)
 
+# Store Discogs and Spotify API credentials from secrets.json
 discogs_access_token = secrets['discogs_access_token']
 discogs_username = secrets['discogs_username']
 spotify_client_id = secrets['spotify_client_id']
 spotify_client_secret = secrets['spotify_client_secret']
 
-# Initialize Discogs client
+# Initialize Discogs client with the user token
 discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
 
-# Get user information and collection
+# Retrieve user information and collection from Discogs
 user = discogs.identity()
 collection = discogs.user(discogs_username).collection_folders[0].releases
 
-# Check if the --all flag is passed
+# Check if the --all flag is passed to process all items in the collection
 process_all = '--all' in sys.argv
 
-# Check if the --num-items flag is passed and set the number of items to process
+# Check if the --num-items flag is passed and set the number of items to process accordingly
 num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
 if num_items_override:
     try:
@@ -64,28 +67,52 @@ if num_items_override:
 else:
     num_items = 10
 
-# Determine the number of items to process
+# Determine the number of items to process based on the flags
 num_items = len(collection) if process_all else num_items
 
-# Function to escape quotes
 def escape_quotes(text):
+    """
+    Escapes double quotes in a given text.
+    
+    Args:
+        text (str): The input text to escape double quotes in.
+        
+    Returns:
+        str: The text with escaped double quotes.
+    """
     text = text.replace('"', '\\"')
     text = re.sub(r'\s\(\d+\)', '', text)  # Remove brackets and numbers inside them
     return text
 
-# Function to sanitize a slug
 def sanitize_slug(slug):
+    """
+    Sanitizes a given slug for URL generation.
+    
+    Args:
+        slug (str): The input slug to sanitize.
+        
+    Returns:
+        str: The sanitized slug with non-ASCII characters removed, spaces replaced by hyphens, and special characters removed.
+    """
     slug = slug.encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r'\s\(\d+\)', '', slug)  # Remove brackets and numbers inside them
     slug = re.sub(r'\W+', ' ', slug)
     slug = slug.strip().lower().replace(' ', '-').replace('"', '')
     return slug
 
-# Function to download an image
 def download_image(url, filename, retries=3, delay=1):
+    """
+    Downloads an image from a given URL and saves it to a specified file.
+
+    Args:
+        url (str): The URL of the image to download.
+        filename (str): The path and name of the file to save the image to.
+        retries (int, optional): The number of times to retry the download if it fails. Defaults to 3.
+        delay (int, optional): The time to wait (in seconds) between retries. Defaults to 1.
+    """
     folder_path = Path(filename).parent
     folder_path.mkdir(parents=True, exist_ok=True)
-    
+
     if os.path.exists(filename):
         logging.info(f"Image file {filename} already exists. Skipping download.")
         return
@@ -102,9 +129,16 @@ def download_image(url, filename, retries=3, delay=1):
             else:
                 logging.error(f'Failed to download image {url} after {retries} attempts')
 
-
-# Function to extract the YouTube video ID from a URL
 def extract_youtube_id(url):
+    """
+    Extracts the YouTube video ID from a given URL.
+
+    Args:
+        url (str): The URL of the YouTube video.
+
+    Returns:
+        str: The extracted YouTube video ID or None if not found.
+    """
     youtube_id_match = re.search(r'(?<=v=)[^&#]+', url)
     if youtube_id_match:
         return youtube_id_match.group(0)
@@ -147,22 +181,45 @@ def get_spotify_token():
         return access_token
     return None
 
-# Function to process artists only once
 def process_artist(artist_info, processed_artists):
+    """
+    Processes an artist's information and creates a markdown file if the artist hasn't been processed yet.
+
+    Args:
+        artist_info (dict): A dictionary containing the artist's information.
+        processed_artists (set): A set of processed artist IDs to avoid processing the same artist multiple times.
+    """
     if artist_info is not None:
         artist_id = artist_info["id"]
         if artist_id not in processed_artists:
             create_artist_markdown_file(artist_info)
             processed_artists.add(artist_id)
 
-# Function to format notes
+
 def format_notes(notes):
+    """
+    Formats the notes by removing newline and carriage return characters.
+
+    Args:
+        notes (str): The notes to be formatted.
+
+    Returns:
+        str: The formatted notes as a single line of text.
+    """
     if notes is None:
         return ""
     return notes.replace('\n', ' ').replace('\r', ' ')
 
-# Function to format the tracklist
 def format_tracklist(tracklist):
+    """
+    Formats the tracklist as a string with each track title and duration on a separate line.
+
+    Args:
+        tracklist (list): A list of dictionaries containing track information.
+
+    Returns:
+        str: The formatted tracklist as a string.
+    """
     formatted_tracklist = []
     for index, track in enumerate(tracklist, start=1):
         title = track["title"]
@@ -173,8 +230,17 @@ def format_tracklist(tracklist):
             formatted_tracklist.append(f'{index}. {title}')
     return "\n".join(formatted_tracklist)
 
-# Function to format the release formats
+
 def format_release_formats(release_formats):
+    """
+    Formats the release formats as a comma-separated string.
+
+    Args:
+        release_formats (list): A list of dictionaries containing release format information.
+
+    Returns:
+        str: The formatted release formats as a string.
+    """
     formatted_formats = []
     
     for fmt in release_formats:
@@ -189,10 +255,20 @@ def format_release_formats(release_formats):
             format_details.append(f"({fmt['text']})")
         
         formatted_formats.append(' '.join(format_details))
-    
+
     return ', '.join(formatted_formats)
 
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY):
+    """
+    Creates a markdown file for an artist using the provided artist data and saves it to the specified directory.
+
+    Args:
+        artist_data (dict): A dictionary containing the artist's data, including name, slug, profile, aliases, members, and images.
+        output_dir (str, optional): The directory where the artist's markdown file and images should be saved. Defaults to ARTIST_IMAGES_DIRECTORY.
+
+    Returns:
+        None: If artist_data is None or an error occurs, the function logs an error message and returns None.
+    """
     if artist_data is None:
         logging.error('No artist information, skipping')
         return
@@ -210,8 +286,6 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY)
     else:
         missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
         download_image(missing_cover_url, image_path)
-
-    # Rest of the function
 
     # Check if the artist file already exists
     artist_file_path = folder_path / "_index.md"
