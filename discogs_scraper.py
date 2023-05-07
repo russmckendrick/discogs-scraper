@@ -16,10 +16,10 @@ from tqdm import tqdm
 from datetime import datetime
 
 # Set delay between requests and define cache and output directories
-DELAY = 2
 CACHE_FILE = 'collection_cache.json'
 OUTPUT_DIRECTORY = 'website/content/posts'
 ARTIST_DIRECTORY = "website/content/artist"
+DEFAULT_DELAY = 2
 
 # Create logs folder if it doesn't exist
 if not os.path.exists('logs'):
@@ -55,6 +55,20 @@ collection = discogs.user(discogs_username).collection_folders[0].releases
 
 # Check if the --all flag is passed to process all items in the collection
 process_all = '--all' in sys.argv
+
+# Check if the --delay flag is passed and set the delay between requests accordingly
+delay_override = next((arg for arg in sys.argv if arg.startswith('--delay=')), None)
+if delay_override:
+    try:
+        delay_value = float(delay_override.split('=')[1])
+        if delay_value < 0:
+            raise ValueError("Delay value must be non-negative")
+        DELAY = delay_value
+    except ValueError as e:
+        logging.error(f"Invalid value for --delay flag. Using default value ({DEFAULT_DELAY}). Error: {e}")
+        DELAY = DEFAULT_DELAY
+else:
+    DELAY = DEFAULT_DELAY
 
 # Check if the --num-items flag is passed and set the number of items to process accordingly
 num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
