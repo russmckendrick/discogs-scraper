@@ -57,3 +57,7 @@ $ python3 discogs_scraper.py --all --delay 0
 If you'd like to contribute or suggest improvements, feel free to submit a pull request or open an issue on GitHub. We appreciate your input! 🌟
 
 Enjoy scraping and building your music collection website! 🎶
+
+## One More Thing... 🤖
+
+Oh yeah, it was mostly written by ChapGPT 💬 with me debugging 🐛 it and adding some features. 🤓
