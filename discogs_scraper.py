@@ -14,7 +14,7 @@ from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
 from datetime import datetime
 
-DELAY = 2
+DELAY = 1
 CACHE_FILE = 'collection_cache.json'
 OUTPUT_DIRECTORY = 'website/content/posts'
 ARTIST_IMAGES_DIRECTORY = "website/content/artist"
@@ -192,56 +192,50 @@ def format_release_formats(release_formats):
     
     return ', '.join(formatted_formats)
 
-# Function to create an artist markdown file
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY):
-    
     if artist_data is None:
         logging.error('No artist information, skipping')
         return
 
-        artist_name = artist_data["name"]
-        slug = artist_data["slug"]
-        folder_path = Path(output_dir) / slug
-        image_filename = f"{slug}.jpg"
-        image_path = folder_path / image_filename
+    artist_name = artist_data["name"]
+    slug = artist_data["slug"]
+    folder_path = Path(output_dir) / slug
+    image_filename = f"{slug}.jpg"
+    image_path = folder_path / image_filename
 
-        # Check if the images list is not empty before accessing it
-        if artist_data["images"]:
-            artist_image_url = artist_data["images"][0]
-            download_image(artist_image_url, image_path)
-        else:
-            missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
-            download_image(missing_cover_url, image_path)
+    # Check if the images list is not empty before accessing it
+    if artist_data["images"]:
+        artist_image_url = artist_data["images"][0]
+        download_image(artist_image_url, image_path)
+    else:
+        missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+        download_image(missing_cover_url, image_path)
 
     # Rest of the function
 
-        # Check if the artist file already exists
-        artist_file_path = folder_path / "_index.md"
+    # Check if the artist file already exists
+    artist_file_path = folder_path / "_index.md"
 
-        # Create the output directory if it doesn't exist
-        folder_path.mkdir(parents=True, exist_ok=True)
+    # Create the output directory if it doesn't exist
+    folder_path.mkdir(parents=True, exist_ok=True)
 
-        # Render markdown file using Jinja2 template
-        env = Environment(loader=FileSystemLoader('.'))
-        template = env.get_template('artist_template.md')
+    # Render markdown file using Jinja2 template
+    env = Environment(loader=FileSystemLoader('.'))
+    template = env.get_template('artist_template.md')
 
-        rendered_content = template.render(
-            name=escape_quotes(artist_name),
-            slug=sanitize_slug(artist_data["slug"]),
-            profile=escape_quotes(artist_data["profile"]),
-            aliases=artist_data["aliases"],
-            members=artist_data["members"],
-            image=image_filename,
-        )
+    rendered_content = template.render(
+        name=escape_quotes(artist_name),
+        slug=sanitize_slug(artist_data["slug"]),
+        profile=escape_quotes(artist_data["profile"]),
+        aliases=artist_data["aliases"],
+        members=artist_data["members"],
+        image=image_filename,
+    )
 
-        # Save the rendered content to the markdown file
-        with open(artist_file_path, "w") as f:
-            f.write(rendered_content)
-        logging.info(f"Saved artist file {artist_file_path}")
-
-    else:
-        logging.error('No artist information, skipping')
-        return None
+    # Save the rendered content to the markdown file
+    with open(artist_file_path, "w") as f:
+        f.write(rendered_content)
+    logging.info(f"Saved artist file {artist_file_path}")
 
 # Function to create the album markdown file
 def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
