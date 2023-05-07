@@ -100,6 +100,28 @@ def sanitize_slug(slug):
     slug = slug.strip().lower().replace(' ', '-').replace('"', '')
     return slug
 
+def tidy_text(text):
+    """
+    Tidies up text by converting certain tags to markdown and removing anything that doesn't look like markdown.
+    
+    Args:
+        text (str): The input text to tidy up.
+        
+    Returns:
+        str: The tidied up text.
+    """
+    
+    text = text.replace('"', '\\"') # Escape double quotes
+    text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', text)  # Convert certain tags to markdown Bold
+    text = re.sub(r'\[i\](.*?)\[/i\]', r'*\1*', text)  # Convert certain tags to markdown Italic
+    text = re.sub(r'\[(a=[^\]]+)\]', '', text) # Remove artist names that look like '[a...]'
+    text = re.sub(r'\[.*?\]', '', text)  # Remove tags
+    text = re.sub(r'\(.*?\)', '', text)  # Remove parentheses and anything inside them
+    text = re.sub(r'\s{2,}', ' ', text)  # Replace multiple spaces with a single space
+    text = text.strip()  # Remove leading and trailing whitespace
+    
+    return text
+
 def download_image(url, filename, retries=3, delay=1):
     """
     Downloads an image from a given URL and saves it to a specified file.
@@ -144,8 +166,17 @@ def extract_youtube_id(url):
         return youtube_id_match.group(0)
     return None
 
-# Spotify functions
 def get_spotify_id(artist, album_name):
+    """
+    Gets the Spotify ID of an album given the artist and album name.
+    
+    Args:
+        artist (str): The name of the artist.
+        album_name (str): The name of the album.
+        
+    Returns:
+        str: The Spotify ID of the album, or None if not found.
+    """
     token = get_spotify_token()
     url = 'https://api.spotify.com/v1/search'
     params = {
@@ -166,6 +197,12 @@ def get_spotify_id(artist, album_name):
     return None
 
 def get_spotify_token():
+    """
+    Gets an access token for the Spotify API using client credentials authentication.
+    
+    Returns:
+        str: The access token, or None if not obtained.
+    """
     url = 'https://accounts.spotify.com/api/token'
     headers = {
         'Authorization': f'Basic {base64.b64encode(f"{spotify_client_id}:{spotify_client_secret}".encode()).decode()}'
@@ -300,7 +337,7 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY)
     rendered_content = template.render(
         name=escape_quotes(artist_name),
         slug=sanitize_slug(artist_data["slug"]),
-        profile=escape_quotes(artist_data["profile"]),
+        profile=tidy_text(artist_data["profile"]),
         aliases=artist_data["aliases"],
         members=artist_data["members"],
         image=image_filename,
@@ -311,8 +348,17 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY)
         f.write(rendered_content)
     logging.info(f"Saved artist file {artist_file_path}")
 
-# Function to create the album markdown file
-def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
+def create_markdown_file(item_data, output_dir=Path("output")):
+    """
+    Creates a markdown file for the given album data and saves it in the output directory.
+
+    Args:
+        item_data (dict): The data for the album.
+        output_dir (str or Path): The directory to save the markdown file in.
+
+    Returns:
+        None
+    """
     artist = item_data["Artist Name"]
     album_name = item_data["Album Title"]
     release_id = str(item_data["Release ID"])
@@ -370,15 +416,31 @@ def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
     logging.info(f"Saved/Updated file {folder_path}.index.md")
 
 # Load collection cache or create an empty cache
+# If the cache file exists, load its contents as a dictionary
 if os.path.exists(CACHE_FILE):
     with open(CACHE_FILE, 'r') as f:
         collection_cache = json.load(f)
+# If the cache file does not exist, create an empty dictionary
 else:
     collection_cache = {}
 
 def get_artist_info(artist_id):
+    """
+    Retrieves information about an artist with the specified ID from Discogs.
+
+    Args:
+        artist_id (int): The ID of the artist to fetch information for.
+
+    Returns:
+        dict or None: A dictionary containing information about the artist, including their ID, name, profile, URL, aliases,
+        members, images, and slug. If the artist cannot be found or an error occurs, it returns None.
+    """
+
     try:
+        # Retrieve the artist from Discogs using the specified ID
         artist = discogs.artist(artist_id)
+
+        # Create a dictionary containing information about the artist
         artist_info = {
             'id': artist.id,
             'name': artist.name,
@@ -387,15 +449,29 @@ def get_artist_info(artist_id):
             'aliases': [{'id': alias.id, 'name': alias.name} for alias in artist.aliases] if artist.aliases else [],
             'members': [{'id': member.id, 'name': member.name} for member in artist.members] if artist.members else [],
             'images': [image['resource_url'] for image in artist.images] if artist.images else [],
-            "slug": sanitize_slug(artist.name), 
+            "slug": sanitize_slug(artist.name),  # Create a sanitized string representation of the artist name
         }
+
+        # Return the artist information dictionary
         return artist_info
+
     except Exception as e:
+        # Log an error message if the artist cannot be found or an error occurs
         logging.error(f'Error fetching artist information for ID {artist_id}: {e}')
         return None
 
-# Define a function to process an item and add it to the cache
 def process_item(item, cache):
+    """
+    Process a single Discogs item and create a dictionary of the item's information.
+
+    Args:
+        item (discogs_client.models.Item): The Discogs item to be processed.
+        cache (dict): A dictionary to store processed items in.
+
+    Returns:
+        dict: A dictionary of the item's information.
+
+    """
     release = item.release
     release_id = release.id
     artist_info = None  # Initialize artist_info as None
@@ -404,30 +480,49 @@ def process_item(item, cache):
         artist_name = release.artists[0].name
         album_title = release.title
         artist_id = release.artists[0].id
+
+        # Get artist information
         artist_info = get_artist_info(artist_id)
+
         date_added = item.date_added.isoformat() if item.date_added else None
         genre = release.genres
         style = release.styles
         label = release.labels[0].name if release.labels else None
         catalog_number = release.labels[0].catno if release.labels else None
+
+        # Get release formats
         release_formats = [
             {
                 key: fmt[key] for key in ["name", "qty", "text", "descriptions"] if key in fmt
             }
             for fmt in release.formats
         ] if release.formats else None
+
         release_date = release.year
         country = release.country
         rating = release.community.rating.average
+
+        # Get track list
         track_list = [{'number': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist]
+
+        # Get album cover URL
         cover_url = release.images[0]['resource_url'] if release.images else None
+
+        # Get videos
         videos = [{'title': video.title, 'url': video.url} for video in release.videos] if release.videos else None
+
         release_url = release.url
         notes = release.notes
+
+        # Get credits
         credits = [str(credit) for credit in release.extraartists] if hasattr(release, 'extraartists') else None
+
         slug = sanitize_slug(f"{album_title}-{release_id}")
+
+        # Get Spotify ID
         spotify_id = get_spotify_id(artist_name, album_title)
 
+        # Create dictionary of item information
         cache[str(release_id)] = {
             "Release ID": release_id,
             "Artist Name": artist_name,
@@ -451,6 +546,8 @@ def process_item(item, cache):
             "Spotify ID": spotify_id,
             "Artist Info": artist_info,
         }
+
+    return cache[str(release_id)]
 
 # Initialize a set for processed artists
 processed_artists = set()
@@ -488,6 +585,6 @@ with open(CACHE_FILE, 'w') as f:
 num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
 if num_items_override:
     try:
-        num_items = int(num_items_override.split('=')[1])
+        num_items = int(num_items_override.split('=')[1])  # Extract the number of items from the command line argument
     except ValueError:
         logging.error("Invalid value for --num-items flag. Using default value (10).")
