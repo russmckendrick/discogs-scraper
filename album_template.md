@@ -14,8 +14,13 @@ genres: [{% for genre in genres %}"{{ genre }}"{% if not loop.last %}, {% endif 
 styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 ---
 
-## Tracklisting
+![{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}]({{ cover_filename }})
+
+<!-- section break -->
+
 {{ track_list }}
+
+<!-- section break -->
 
 {% if spotify %}
 ## Spotify
@@ -24,17 +29,20 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 
 {% if first_video_id %}
 ## Videos
-{% raw %}{{< youtube id="{% endraw %}{{ first_video_id }}{% raw %}" title="{% endraw %}{{ first_video_title }}{% raw %}" >}}{% endraw %}{% if additional_videos %}{% for video in additional_videos %}
+### {{ first_video_title }}
+{% raw %}{{< youtube id="{% endraw %}{{ first_video_id }}{% raw %}" title="{% endraw %}{{ first_video_title }}{% raw %}" >}}{% endraw %}<br>
+{% if additional_videos %}
+### More Videos
+{% for video in additional_videos %}
 - [{{ video.title }}]({{ video.url }}){% endfor %}{% endif %}
 {% endif %}
-## Notes
-| Notes          |             |
-| ---------------| ----------- |
-| Release Year   | {{ release_date }} |
+
+## Release Information
+|  Key           | Value                                                |
+| ---------------| ---------------------------------------------------- |
+| Release Year   | {{ release_date }}                                   |
 | Discogs Link   | [{{ artist }} - {{ album_name }}]({{ release_url }}) |
 | Label          | {{ label }} |
 | Format         | {{ release_formats }} |
 | Catalog Number | {{ catalog_number }} |
-{% if notes %}
-{{ notes }}
-{% endif %}
+{% if notes %}| Notes | {{ notes }} |{% endif %}

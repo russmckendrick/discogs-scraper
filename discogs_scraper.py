@@ -7,14 +7,17 @@ import discogs_client
 import time
 import logging
 import base64
+import random
 from pathlib import Path
 from urllib.request import urlretrieve
 from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
 from datetime import datetime
 
+DELAY = 2
 CACHE_FILE = 'collection_cache.json'
-OUTPUT_DIRECTORY = 'website/content/albums'
+OUTPUT_DIRECTORY = 'content/posts'
+ARTIST_IMAGES_DIRECTORY = "content/artist"
 
 # Create logs folder if it doesn't exist
 if not os.path.exists('logs'):
@@ -73,21 +76,32 @@ def escape_quotes(text):
 # Function to sanitize a slug
 def sanitize_slug(slug):
     slug = slug.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r'\s\(\d+\)', '', slug)  # Remove brackets and numbers inside them
     slug = re.sub(r'\W+', ' ', slug)
     slug = slug.strip().lower().replace(' ', '-').replace('"', '')
     return slug
 
 # Function to download an image
-def download_image(url, filename):
+def download_image(url, filename, retries=3, delay=1):
+    folder_path = Path(filename).parent
+    folder_path.mkdir(parents=True, exist_ok=True)
+    
     if os.path.exists(filename):
         logging.info(f"Image file {filename} already exists. Skipping download.")
         return
 
-    try:
-        logging.info(f"Image file {filename} doesn't exists. Downloading.")
-        urlretrieve(url, filename)
-    except Exception as e:
-        logging.error(f'Unable to download image {url}, error {e}')
+    for attempt in range(retries):
+        try:
+            logging.info(f"Image file {filename} doesn't exist. Downloading. (Attempt {attempt + 1})")
+            urlretrieve(url, filename)
+            break
+        except Exception as e:
+            logging.error(f'Unable to download image {url}, error {e}')
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                logging.error(f'Failed to download image {url} after {retries} attempts')
+
 
 # Function to extract the YouTube video ID from a URL
 def extract_youtube_id(url):
@@ -133,6 +147,20 @@ def get_spotify_token():
         return access_token
     return None
 
+# Function to process artists only once
+def process_artist(artist_info, processed_artists):
+    if artist_info is not None:
+        artist_id = artist_info["id"]
+        if artist_id not in processed_artists:
+            create_artist_markdown_file(artist_info)
+            processed_artists.add(artist_id)
+
+# Function to format notes
+def format_notes(notes):
+    if notes is None:
+        return ""
+    return notes.replace('\n', ' ').replace('\r', ' ')
+
 # Function to format the tracklist
 def format_tracklist(tracklist):
     formatted_tracklist = []
@@ -145,7 +173,7 @@ def format_tracklist(tracklist):
             formatted_tracklist.append(f'{index}. {title}')
     return "\n".join(formatted_tracklist)
 
-
+# Function to format the release formats
 def format_release_formats(release_formats):
     formatted_formats = []
     
@@ -164,6 +192,51 @@ def format_release_formats(release_formats):
     
     return ', '.join(formatted_formats)
 
+# Function to create an artist markdown file
+def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY):
+    
+    if artist_data is not None:
+        artist_name = escape_quotes(artist_data["name"])
+        slug = sanitize_slug(artist_data["slug"])
+        folder_path = Path(output_dir) / slug
+        image_filename = f"{slug}.jpg"
+        image_path = folder_path / image_filename
+        artist_image_url = artist_data["images"][0]
+        if artist_image_url:
+            download_image(artist_image_url, image_path)
+        else:
+            missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+            download_image(missing_cover_url, image_path)
+
+        # Check if the artist file already exists
+        artist_file_path = folder_path / "_index.md"
+
+        # Create the output directory if it doesn't exist
+        folder_path.mkdir(parents=True, exist_ok=True)
+
+        # Render markdown file using Jinja2 template
+        env = Environment(loader=FileSystemLoader('.'))
+        template = env.get_template('artist_template.md')
+
+        rendered_content = template.render(
+            name=escape_quotes(artist_name),
+            slug=sanitize_slug(artist_data["slug"]),
+            profile=escape_quotes(artist_data["profile"]),
+            aliases=artist_data["aliases"],
+            members=artist_data["members"],
+            image=image_filename,
+        )
+
+        # Save the rendered content to the markdown file
+        with open(artist_file_path, "w") as f:
+            f.write(rendered_content)
+        logging.info(f"Saved artist file {artist_file_path}")
+
+    else:
+        logging.error('No artist information, skipping')
+        return None
+
+# Function to create the album markdown file
 def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
     artist = item_data["Artist Name"]
     album_name = item_data["Album Title"]
@@ -190,8 +263,8 @@ def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
     genres = item_data.get("Genre", [])
     styles = item_data.get("Style", [])
     videos = item_data["Videos"]
-    first_video = videos[0] if videos else None
-    additional_videos = videos[1:] if videos and len(videos) > 1 else None
+    first_video = random.choice(videos) if videos else None
+    additional_videos = [video for video in videos if video != first_video] if videos and len(videos) > 1 else None
 
     rendered_content = template.render(
         title="{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
@@ -212,7 +285,7 @@ def create_markdown_file(item_data, output_dir=OUTPUT_DIRECTORY):
         label=item_data["Label"],
         release_formats=format_release_formats(item_data["Release Formats"]),
         catalog_number=item_data["Catalog Number"],
-        notes=item_data["Notes"],
+        notes=format_notes(item_data["Notes"]),
         spotify=item_data["Spotify ID"],
     )
 
@@ -228,14 +301,35 @@ if os.path.exists(CACHE_FILE):
 else:
     collection_cache = {}
 
+def get_artist_info(artist_id):
+    try:
+        artist = discogs.artist(artist_id)
+        artist_info = {
+            'id': artist.id,
+            'name': artist.name,
+            'profile': artist.profile,
+            'url': artist.url,
+            'aliases': [{'id': alias.id, 'name': alias.name} for alias in artist.aliases] if artist.aliases else [],
+            'members': [{'id': member.id, 'name': member.name} for member in artist.members] if artist.members else [],
+            'images': [image['resource_url'] for image in artist.images] if artist.images else [],
+            "slug": sanitize_slug(artist.name), 
+        }
+        return artist_info
+    except Exception as e:
+        logging.error(f'Error fetching artist information for ID {artist_id}: {e}')
+        return None
+
 # Define a function to process an item and add it to the cache
 def process_item(item, cache):
     release = item.release
     release_id = release.id
+    artist_info = None  # Initialize artist_info as None
 
     if str(release_id) not in cache:
         artist_name = release.artists[0].name
         album_title = release.title
+        artist_id = release.artists[0].id
+        artist_info = get_artist_info(artist_id)
         date_added = item.date_added.isoformat() if item.date_added else None
         genre = release.genres
         style = release.styles
@@ -280,7 +374,11 @@ def process_item(item, cache):
             "Notes": notes,
             "Credits": credits,
             "Spotify ID": spotify_id,
+            "Artist Info": artist_info,
         }
+
+# Initialize a set for processed artists
+processed_artists = set()
 
 # Iterate through the collection, update the cache, and create the markdown file
 with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
@@ -292,16 +390,20 @@ with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{tota
         process_item(item, collection_cache)
         release_id = item.release.id
         release_data = collection_cache[str(release_id)]
+        artist_info = release_data["Artist Info"]
 
         # Update the progress bar with current item information
         progress_bar.set_description(f'Currently Processing: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
         progress_bar.update(1)
 
-        # Create the markdown file
+        # Create the release markdown file
         create_markdown_file(release_data)
 
-        # Add a 2-second delay between requests to avoid hitting the rate limit
-        time.sleep(0)
+        # Process the artist and create the artist markdown file if not processed before
+        process_artist(artist_info, processed_artists)
+
+        # Add a delay between requests to avoid hitting the rate limit
+        time.sleep(DELAY)
 
 # Save the updated cache to the file
 with open(CACHE_FILE, 'w') as f:
