@@ -195,18 +195,25 @@ def format_release_formats(release_formats):
 # Function to create an artist markdown file
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_IMAGES_DIRECTORY):
     
-    if artist_data is not None:
-        artist_name = escape_quotes(artist_data["name"])
-        slug = sanitize_slug(artist_data["slug"])
+    if artist_data is None:
+        logging.error('No artist information, skipping')
+        return
+
+        artist_name = artist_data["name"]
+        slug = artist_data["slug"]
         folder_path = Path(output_dir) / slug
         image_filename = f"{slug}.jpg"
         image_path = folder_path / image_filename
-        artist_image_url = artist_data["images"][0]
-        if artist_image_url:
+
+        # Check if the images list is not empty before accessing it
+        if artist_data["images"]:
+            artist_image_url = artist_data["images"][0]
             download_image(artist_image_url, image_path)
         else:
             missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
             download_image(missing_cover_url, image_path)
+
+    # Rest of the function
 
         # Check if the artist file already exists
         artist_file_path = folder_path / "_index.md"
