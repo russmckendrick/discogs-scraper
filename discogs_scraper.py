@@ -398,8 +398,8 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     genres = item_data.get("Genre", [])
     styles = item_data.get("Style", [])
     videos = item_data["Videos"]
-    first_video = random.choice(videos) if videos else None
-    additional_videos = [video for video in videos if video != first_video] if videos and len(videos) > 1 else None
+    first_video = videos[0] if videos else None
+    additional_videos = [video for video in videos[1:]] if videos and len(videos) > 1 else None
 
     rendered_content = template.render(
         title="{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
