@@ -16,8 +16,8 @@ from datetime import datetime
 
 DELAY = 2
 CACHE_FILE = 'collection_cache.json'
-OUTPUT_DIRECTORY = 'content/posts'
-ARTIST_IMAGES_DIRECTORY = "content/artist"
+OUTPUT_DIRECTORY = 'website/content/posts'
+ARTIST_IMAGES_DIRECTORY = "website/content/artist"
 
 # Create logs folder if it doesn't exist
 if not os.path.exists('logs'):
