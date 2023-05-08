@@ -9,17 +9,25 @@ import time
 import logging
 import base64
 import random
+import jwt
 from pathlib import Path
 from urllib.request import urlretrieve
 from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
-from datetime import datetime
+from datetime import datetime, timedelta
+
+# current_time = datetime.now()
+# print(current_time.strftime("%Y-%m-%d_%H-%M-%S"))
+# future_time = current_time + timedelta(days=2)
+# print(future_time.strftime("%Y-%m-%d_%H-%M-%S"))
 
 # Set delay between requests and define cache and output directories
 CACHE_FILE = 'collection_cache.json'
 OUTPUT_DIRECTORY = 'website/content/posts'
 ARTIST_DIRECTORY = "website/content/artist"
+APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8'
 DEFAULT_DELAY = 2
+APPLE_MUSIC_STOREFRONT = "gb"
 
 # Create logs folder if it doesn't exist
 if not os.path.exists('logs'):
@@ -45,6 +53,8 @@ discogs_access_token = secrets['discogs_access_token']
 discogs_username = secrets['discogs_username']
 spotify_client_id = secrets['spotify_client_id']
 spotify_client_secret = secrets['spotify_client_secret']
+apple_music_client_id = secrets['apple_music_client_id']
+apple_developer_team_id = secrets['apple_developer_team_id']
 
 # Initialize Discogs client with the user token
 discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
@@ -83,6 +93,59 @@ else:
 
 # Determine the number of items to process based on the flags
 num_items = len(collection) if process_all else num_items
+
+def generate_apple_music_token(private_key_path, key_id, team_id):
+    with open(private_key_path, 'r') as f:
+        private_key = f.read()
+
+    headers = {
+        'alg': 'ES256',
+        'kid': key_id
+    }
+
+    now = datetime.now()
+    exp = now + timedelta(hours=12)
+
+    payload = {
+        'iss': team_id,
+        'iat': int(now.timestamp()),
+        'exp': int(exp.timestamp())
+    }
+
+    token = jwt.encode(payload, private_key, algorithm='ES256', headers=headers)
+    return token
+
+def get_apple_music_data(search_type, query, token):
+    base_url = "https://api.music.apple.com/v1/catalog/"
+    store_front = APPLE_MUSIC_STOREFRONT
+
+    headers = {
+        'Authorization': f'Bearer {token}'
+    }
+
+    search_params = {
+        'term': query,
+        'limit': 1,
+        'types': search_type
+    }
+
+    search_url = f"{base_url}{store_front}/search"
+    search_response = requests.get(search_url, headers=headers, params=search_params)
+
+    if search_response.status_code == 200:
+        search_data = search_response.json()
+        if search_type == 'artists' and search_data['results']['artists']['data']:
+            artist_data = search_data['results']['artists']['data'][0]
+            return artist_data
+        elif search_type == 'albums' and search_data['results']['albums']['data']:
+            album_data = search_data['results']['albums']['data'][0]
+            return album_data
+        else:
+            print(f"No {search_type} found")
+            return None
+    else:
+        print(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
+        return None
 
 def escape_quotes(text):
     """
@@ -489,15 +552,13 @@ def process_item(item, cache):
     release = item.release
     release_id = release.id
     artist_info = None  # Initialize artist_info as None
+    apple_music_data = None  # Initialize apple_music_data as None
 
     if str(release_id) not in cache:
         artist_name = release.artists[0].name
         album_title = release.title
         artist_id = release.artists[0].id
-
-        # Get artist information
-        artist_info = get_artist_info(artist_id)
-
+        
         date_added = item.date_added.isoformat() if item.date_added else None
         genre = release.genres
         style = release.styles
@@ -561,10 +622,30 @@ def process_item(item, cache):
             "Artist Info": artist_info,
         }
 
-    return cache[str(release_id)]
+        # Get Apple Music ID and other data
+        apple_music_data = get_apple_music_data('albums', f'{artist_name} {album_title}', jwt_apple_music_token)
+        if apple_music_data:
+            for key, value in apple_music_data.items():
+                cache[str(release_id)][f"Apple Music {key}"] = value
+
+        # Get artist information
+        if apple_music_data:
+            print(f"Apple Music artist name: {apple_music_data['attributes']['artistName']}")
+            discogs_artist_info = get_artist_info(artist_id)
+            apple_music_artist_info = get_apple_music_data('artists', artist_name, jwt_apple_music_token)
+            artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
+        else:
+            artist_info = get_artist_info(artist_id)
+
+        cache[str(release_id)]["Artist Info"] = artist_info
+
+        return cache[str(release_id)]
 
 # Initialize a set for processed artists
 processed_artists = set()
+
+# Generate the Apple Music token
+jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
 
 # Iterate through the collection, update the cache, and create the markdown file
 with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
