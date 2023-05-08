@@ -633,11 +633,15 @@ def process_item(item, cache):
         if apple_music_data:
             discogs_artist_info = get_artist_info(artist_id)
             apple_music_artist_info = get_apple_music_data('artists', artist_name, jwt_apple_music_token)
-            artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
+            if apple_music_artist_info is not None:
+                artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
+            else:
+                artist_info = discogs_artist_info
         else:
             artist_info = get_artist_info(artist_id)
 
         cache[str(release_id)]["Artist Info"] = artist_info
+
 
         return cache[str(release_id)]
 
