@@ -623,16 +623,16 @@ def process_item(item, cache):
         }
 
         # Get Apple Music ID and other data
-        apple_music_album_title = escape_quotes(album_title)
-        apple_music_data = get_apple_music_data('albums', f'{artist_name} {apple_music_album_title}', jwt_apple_music_token)
-        if apple_music_data:
-            for key, value in apple_music_data.items():
-                cache[str(release_id)][f"Apple Music {key}"] = value
+        if "various" not in artist_name.lower():
+            apple_music_data = get_apple_music_data('albums', f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', jwt_apple_music_token)
+            if apple_music_data:
+                for key, value in apple_music_data.items():
+                    cache[str(release_id)][f"Apple Music {key}"] = value
 
         # Get artist information
         if apple_music_data:
             discogs_artist_info = get_artist_info(artist_id)
-            apple_music_artist_info = get_apple_music_data('artists', artist_name, jwt_apple_music_token)
+            apple_music_artist_info = get_apple_music_data('artists', escape_quotes(artist_name), jwt_apple_music_token)
             if apple_music_artist_info is not None:
                 artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
             else:
@@ -641,7 +641,6 @@ def process_item(item, cache):
             artist_info = get_artist_info(artist_id)
 
         cache[str(release_id)]["Artist Info"] = artist_info
-
 
         return cache[str(release_id)]
 
