@@ -134,17 +134,17 @@ def get_apple_music_data(search_type, query, token):
 
     if search_response.status_code == 200:
         search_data = search_response.json()
-        if search_type == 'artists' and search_data['results']['artists']['data']:
+        if search_type == 'artists' and 'artists' in search_data['results'] and search_data['results']['artists']['data']:
             artist_data = search_data['results']['artists']['data'][0]
             return artist_data
-        elif search_type == 'albums' and search_data['results']['albums']['data']:
+        elif search_type == 'albums' and 'albums' in search_data['results'] and search_data['results']['albums']['data']:
             album_data = search_data['results']['albums']['data'][0]
             return album_data
         else:
-            print(f"No {search_type} found")
+            logging.error(f"No {search_type} found for query '{query}'")
             return None
     else:
-        print(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
+        logging.error(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
         return None
 
 def escape_quotes(text):
@@ -623,14 +623,14 @@ def process_item(item, cache):
         }
 
         # Get Apple Music ID and other data
-        apple_music_data = get_apple_music_data('albums', f'{artist_name} {album_title}', jwt_apple_music_token)
+        apple_music_album_title = escape_quotes(album_title)
+        apple_music_data = get_apple_music_data('albums', f'{artist_name} {apple_music_album_title}', jwt_apple_music_token)
         if apple_music_data:
             for key, value in apple_music_data.items():
                 cache[str(release_id)][f"Apple Music {key}"] = value
 
         # Get artist information
         if apple_music_data:
-            print(f"Apple Music artist name: {apple_music_data['attributes']['artistName']}")
             discogs_artist_info = get_artist_info(artist_id)
             apple_music_artist_info = get_apple_music_data('artists', artist_name, jwt_apple_music_token)
             artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
