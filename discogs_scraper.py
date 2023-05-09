@@ -411,6 +411,11 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
     env = Environment(loader=FileSystemLoader('.'))
     template = env.get_template('artist_template.md')
 
+    if "attributes" in artist_data and "url" in artist_data["attributes"]:
+        some_apple_music_artist_url = artist_data["attributes"]["url"]
+    else:
+        some_apple_music_artist_url = None
+
     rendered_content = template.render(
         name=escape_quotes(artist_name),
         slug=sanitize_slug(artist_data["slug"]),
@@ -418,6 +423,7 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
         aliases=artist_data["aliases"],
         members=artist_data["members"],
         image=image_filename,
+        apple_music_artist_url = some_apple_music_artist_url
     )
 
     # Save the rendered content to the markdown file
@@ -463,6 +469,10 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     videos = item_data["Videos"]
     first_video = videos[0] if videos else None
     additional_videos = [video for video in videos[1:]] if videos and len(videos) > 1 else None
+    if "Apple Music attributes" in item_data and "editorialNotes" in item_data["Apple Music attributes"] and item_data["Apple Music attributes"]["editorialNotes"] and "standard" in item_data["Apple Music attributes"]["editorialNotes"]:
+        some_apple_music_editorialNotes = item_data["Apple Music attributes"]["editorialNotes"]["standard"]
+    else:
+        some_apple_music_editorialNotes = None
 
     rendered_content = template.render(
         title="{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
@@ -486,6 +496,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         notes=format_notes(item_data["Notes"]),
         spotify=item_data["Spotify ID"],
         apple_music_album_url = item_data["Apple Music attributes"]["url"] if "Apple Music attributes" in item_data and "url" in item_data["Apple Music attributes"] else None,
+        apple_music_editorialNotes = some_apple_music_editorialNotes
     )
 
     # Save the rendered content to the markdown file

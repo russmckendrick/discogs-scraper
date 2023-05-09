@@ -22,6 +22,10 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 
 <!-- section break -->
 
+{% if apple_music_editorialNotes != None %}
+{{ apple_music_editorialNotes }}
+{% endif %}
+
 {% if apple_music_album_url != None %}
 ## Apple Music
 {% raw %}{{< applemusic url="{% endraw %}{{ apple_music_album_url }}{% raw %}" >}}{% endraw %}
