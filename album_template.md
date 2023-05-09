@@ -22,10 +22,15 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 
 <!-- section break -->
 
-{% if spotify %}
+{% if apple_music_album_url != None %}
+## Apple Music
+{% raw %}{{< applemusic url="{% endraw %}{{ apple_music_album_url }}{% raw %}" >}}{% endraw %}
+
+{% elif spotify %}
 ## Spotify
 {% raw %}{{< spotify type="album" id="{% endraw %}{{ spotify }}{% raw %}" width="100%" height="500" >}}{% endraw %}
 {% endif %}
+
 
 {% if first_video_id %}
 ## Videos
