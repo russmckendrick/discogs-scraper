@@ -2,3 +2,4 @@ python3-discogs-client
 requests
 tqdm
 jinja2
+cryptography
