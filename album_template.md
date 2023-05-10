@@ -2,7 +2,8 @@
 title: "{{ title | replace('\"','') | safe }}"
 artist: "{{ artist | replace('\"','') | safe }}"
 album_name: "{{ album_name | replace('\"','') | safe }}"
-date: {{ date_added }}
+date: {{ date_added }}{% if apple_music_editorialNotes != None %}
+release_date: "{{ apple_music_album_release_date }}"{% endif %}
 release_id: "{{ release_id }}"
 slug: "{{ slug }}"
 hideSummary: true

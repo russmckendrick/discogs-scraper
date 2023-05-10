@@ -537,7 +537,8 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         notes=format_notes(item_data["Notes"]),
         spotify=item_data["Spotify ID"],
         apple_music_album_url = item_data["Apple Music attributes"]["url"] if "Apple Music attributes" in item_data and "url" in item_data["Apple Music attributes"] else None,
-        apple_music_editorialNotes = some_apple_music_editorialNotes
+        apple_music_editorialNotes = some_apple_music_editorialNotes,
+        apple_music_album_release_date = item_data["Apple Music attributes"]["releaseDate"] if "Apple Music attributes" in item_data and "releaseDate" in item_data["Apple Music attributes"] else None,
     )
 
     # Save the rendered content to the markdown file
