@@ -95,6 +95,25 @@ else:
 num_items = len(collection) if process_all else num_items
 
 def generate_apple_music_token(private_key_path, key_id, team_id):
+    """
+    Generates a developer token for Apple Music API.
+
+    This function generates a JWT (JSON Web Token) using the ES256 algorithm. 
+    The token is required to access the Apple Music API as a developer.
+
+    Args:
+        private_key_path (str): The path to the private key (in .p8 format) 
+            obtained from the Apple Developer account.
+        key_id (str): The ID for the private key obtained from the Apple Developer account.
+        team_id (str): The ID for the developer's team obtained from the Apple Developer account.
+
+    Returns:
+        str: A JWT token that can be used to authorize requests to the Apple Music API.
+    
+    Raises:
+        IOError: If the file at `private_key_path` cannot be read.
+        jwt.PyJWTError: If there is an error encoding the token.
+    """
     with open(private_key_path, 'r') as f:
         private_key = f.read()
 
@@ -115,7 +134,28 @@ def generate_apple_music_token(private_key_path, key_id, team_id):
     token = jwt.encode(payload, private_key, algorithm='ES256', headers=headers)
     return token
 
+
 def get_apple_music_data(search_type, query, token):
+    """
+    Queries the Apple Music API for a specific data based on the search type and query.
+
+    This function sends a GET request to the Apple Music API and retrieves the data 
+    based on the search type (e.g., artists, albums) and the search query.
+
+    Args:
+        search_type (str): The type of data to be searched for. It can be 'artists' or 'albums'.
+        query (str): The search term or query.
+        token (str): The JWT token for authorizing the request to the Apple Music API.
+
+    Returns:
+        dict: A dictionary containing the first search result data if any data is found.
+        None: If no data is found, or if the request was unsuccessful.
+    
+    Raises:
+        requests.exceptions.RequestException: If there is a network problem like a DNS resolution failure, 
+            connection timeout, or similar.
+        requests.exceptions.HTTPError: If an invalid HTTP response was received.
+    """
     base_url = "https://api.music.apple.com/v1/catalog/"
     store_front = APPLE_MUSIC_STOREFRONT
 
@@ -146,6 +186,7 @@ def get_apple_music_data(search_type, query, token):
     else:
         logging.error(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
         return None
+
 
 def escape_quotes(text):
     """
