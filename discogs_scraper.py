@@ -566,7 +566,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
 
     # Store all image URLs
     image_urls = []
-    if "All Images URLs" in item_data:
+    if item_data.get("All Images URLs"):  # This will return None if "All Images URLs" does not exist
         for i, url in enumerate(item_data["All Images URLs"]):
             image_urls.append(url)
 
