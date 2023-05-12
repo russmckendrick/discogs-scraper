@@ -823,6 +823,8 @@ jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_mu
 
 # Iterate through the collection, update the cache, and create the markdown file
 with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
+    # Update the progress bar to reflect already processed items
+    progress_bar.update(last_processed_index)
     with open(CACHE_FILE, 'a') as cache_file:
         for i, item in enumerate(collection):
             if i < last_processed_index:
