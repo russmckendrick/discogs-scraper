@@ -619,14 +619,22 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         f.write(rendered_content)
     logging.info(f"Saved/Updated file {folder_path}.index.md")
 
-# Load collection cache or create an empty cache
-# If the cache file exists, load its contents as a dictionary
-if os.path.exists(CACHE_FILE):
-    with open(CACHE_FILE, 'r') as f:
-        collection_cache = json.load(f)
-# If the cache file does not exist, create an empty dictionary
-else:
-    collection_cache = {}
+# # Load collection cache or create an empty cache
+# # If the cache file exists, load its contents as a dictionary
+# if os.path.exists(CACHE_FILE):
+#     with open(CACHE_FILE, 'r') as f:
+#         collection_cache = json.load(f)
+# # If the cache file does not exist, create an empty dictionary
+# else:
+#     collection_cache = {}
+
+collection_cache = {}
+
+# Load the cache file
+with open(CACHE_FILE, 'r') as f:
+    for line in f:
+        data = json.loads(line)
+        collection_cache.update(data)
 
 def get_artist_info(artist_id):
     """
@@ -772,12 +780,17 @@ def process_item(item, cache):
         if apple_music_data:
             discogs_artist_info = get_artist_info(artist_id)
             apple_music_artist_info = get_apple_music_data('artists', escape_quotes(artist_name), jwt_apple_music_token)
-            if apple_music_artist_info is not None:
+            if discogs_artist_info is not None and apple_music_artist_info is not None:
                 artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
-            else:
+            elif discogs_artist_info is not None:
                 artist_info = discogs_artist_info
+            elif apple_music_artist_info is not None:
+                artist_info = apple_music_artist_info
+            else:
+                artist_info = None
         else:
             artist_info = get_artist_info(artist_id)
+
 
         cache[str(release_id)]["Artist Info"] = artist_info
 
@@ -791,32 +804,48 @@ jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_mu
 
 # Iterate through the collection, update the cache, and create the markdown file
 with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
-    for i, item in enumerate(collection):
-        if i >= num_items:
-            break
+    with open(CACHE_FILE, 'a') as cache_file:
+        for i, item in enumerate(collection):
+            if i >= num_items:
+                break
 
-        # Process the current item and update the cache
-        process_item(item, collection_cache)
-        release_id = item.release.id
-        release_data = collection_cache[str(release_id)]
-        artist_info = release_data["Artist Info"]
+            # Process the current item
+            release_id = item.release.id
+            if str(release_id) in collection_cache:
+                # Retrieve the release data from the cache
+                release_data = collection_cache[str(release_id)]
+                artist_info = release_data["Artist Info"]
+                logging.info(f'Using cached information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
+            else:
+                # Fetch the release data and update the cache
+                process_item(item, collection_cache)
+                release_data = collection_cache[str(release_id)]
+                artist_info = release_data["Artist Info"]
+                logging.info(f'Fetching information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
 
-        # Update the progress bar with current item information
-        progress_bar.set_description(f'Currently Processing: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-        progress_bar.update(1)
+                # Write the current item to the cache file
+                cache_file.write(json.dumps({str(release_id): release_data}) + '\n')
 
-        # Create the release markdown file
-        create_markdown_file(release_data)
+                # Log the action of writing to the cache
+                logging.info(f'Writing information to cache for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
 
-        # Process the artist and create the artist markdown file if not processed before
-        process_artist(artist_info, processed_artists)
+            # Update the progress bar with current item information
+            progress_bar.set_description(f'Currently Processing: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
+            progress_bar.update(1)
 
-        # Add a delay between requests to avoid hitting the rate limit
-        time.sleep(DELAY)
+            # Create the release markdown file
+            create_markdown_file(release_data)
 
+            # Process the artist and create the artist markdown file if not processed before
+            process_artist(artist_info, processed_artists)
+
+            # Add a delay between requests to avoid hitting the rate limit
+            time.sleep(DELAY)
+
+# No need to save the cache to the file again since it was already updated during processing
 # Save the updated cache to the file
-with open(CACHE_FILE, 'w') as f:
-    json.dump(collection_cache, f, indent=4)
+# with open(CACHE_FILE, 'w') as f:
+#     json.dump(collection_cache, f, indent=4)
 
 # Check if the --num-items flag is passed and set the number of items to process
 num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
