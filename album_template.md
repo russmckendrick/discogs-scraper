@@ -23,36 +23,43 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 
 <!-- section break -->
 
-{% if apple_music_editorialNotes != None %}
+{% if wikipedia_summary != None -%}
+{{ wikipedia_summary }}
+{% elif apple_music_editorialNotes != None -%}
 {{ apple_music_editorialNotes }}
-{% endif %}
+{% endif -%}
 
-{% if apple_music_album_url != None %}
+{% if apple_music_album_url != None -%}
 ## Apple Music
 {% raw %}{{< applemusic url="{% endraw %}{{ apple_music_album_url }}{% raw %}" >}}{% endraw %}
-
-{% elif spotify %}
+{% elif spotify -%}
 ## Spotify
 {% raw %}{{< spotify type="album" id="{% endraw %}{{ spotify }}{% raw %}" width="100%" height="500" >}}{% endraw %}
-{% endif %}
-
-
-{% if first_video_id %}
+{% endif -%}
+{% if first_video_id -%}
 ## Videos
 ### {{ first_video_title }}
 {% raw %}{{< youtube id="{% endraw %}{{ first_video_id }}{% raw %}" title="{% endraw %}{{ first_video_title }}{% raw %}" >}}{% endraw %}<br>
-{% if additional_videos %}
+{% if additional_videos -%}
 ### More Videos
 {% for video in additional_videos %}
-- [{{ video.title }}]({{ video.url }}){% endfor %}{% endif %}
+- [{{ video.title }}]({{ video.url }}){% endfor %}{% endif -%}
 {% endif %}
 
 ## Release Information
 |  Key           | Value                                                |
 | ---------------| ---------------------------------------------------- |
+{% if wikipedia_url -%}
+| Wikipedia URL | {{ wikipedia_url }} |
+{% endif -%}
+{% if wikipedia_summary and apple_music_editorialNotes -%}
+| Apple Music Summary | {{ apple_music_editorialNotes }} |
+{% endif -%}
 | Release Year   | {{ release_date }}                                   |
-| Discogs Link   | [{{ artist }} - {{ album_name }}]({{ release_url }}) |
-| Label          | {{ label }} |
 | Format         | {{ release_formats }} |
+| Label          | {{ label }} |
 | Catalog Number | {{ catalog_number }} |
-{% if notes %}| Notes | {{ notes }} |{% endif %}
+{% if notes -%}
+| Notes | {{ notes }} |
+{% endif -%}
+| Discogs URL    | [{{ artist }} - {{ album_name }}]({{ release_url }}) |

@@ -10,6 +10,7 @@ import logging
 import base64
 import random
 import jwt
+import wikipedia
 from pathlib import Path
 from urllib.request import urlretrieve
 from jinja2 import Environment, FileSystemLoader
@@ -93,6 +94,44 @@ else:
 
 # Determine the number of items to process based on the flags
 num_items = len(collection) if process_all else num_items
+
+def get_wikipedia_data(target, keyword):
+    """
+    Retrieves the Wikipedia summary and URL of a given target.
+
+    This function queries the Wikipedia API for the summary and URL of the page corresponding to the provided target.
+    If the target leads to a disambiguation page, if the page does not exist, or if the URL does not contain the 
+    specified keyword, the function returns None for both the summary and the URL.
+
+    Args:
+        target (str): The title of the Wikipedia page to be searched for.
+        keyword (str): The keyword that the URL must contain.
+
+    Returns:
+        tuple: The summary and URL of the Wikipedia page if it exists, is not a disambiguation page, and its URL 
+               contains the specified keyword. Both elements of the tuple are None otherwise.
+    
+    Raises:
+        wikipedia.exceptions.DisambiguationError: If the target leads to a disambiguation page.
+        wikipedia.exceptions.PageError: If the Wikipedia page does not exist.
+    """
+    try:
+        page = wikipedia.page(target)
+        # Check if the URL contains the keyword
+        # Make comparison case-insensitive and replace spaces with underscores
+        if keyword.lower().replace(' ', '_') in page.url.lower():
+            return page.summary, page.url
+        else:
+            logging.error(f"URL of the page for '{target}' does not contain the keyword '{keyword}'.")
+            return None, None
+    except wikipedia.exceptions.DisambiguationError as e:
+        # Handle disambiguation error
+        logging.error(f"DisambiguationError: Multiple potential matches found for '{target}' on Wikipedia.")
+        return None, None
+    except wikipedia.exceptions.PageError as e:
+        # Handle page not found error
+        logging.error(f"PageError: No page found for '{target}' on Wikipedia.")
+        return None, None
 
 def generate_apple_music_token(private_key_path, key_id, team_id):
     """
@@ -508,6 +547,8 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     genres = item_data.get("Genre", [])
     styles = item_data.get("Style", [])
     videos = item_data["Videos"]
+    wikipedia_summary = item_data["Wikipedia Summary"]
+    wikipedia_url = item_data["Wikipedia URL"]
     first_video = videos[0] if videos else None
     additional_videos = [video for video in videos[1:]] if videos and len(videos) > 1 else None
     if "Apple Music attributes" in item_data and "editorialNotes" in item_data["Apple Music attributes"] and item_data["Apple Music attributes"]["editorialNotes"] and "standard" in item_data["Apple Music attributes"]["editorialNotes"]:
@@ -539,6 +580,8 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         apple_music_album_url = item_data["Apple Music attributes"]["url"] if "Apple Music attributes" in item_data and "url" in item_data["Apple Music attributes"] else None,
         apple_music_editorialNotes = some_apple_music_editorialNotes,
         apple_music_album_release_date = item_data["Apple Music attributes"]["releaseDate"] if "Apple Music attributes" in item_data and "releaseDate" in item_data["Apple Music attributes"] else None,
+        wikipedia_summary = wikipedia_summary,
+        wikipedia_url = wikipedia_url,
     )
 
     # Save the rendered content to the markdown file
@@ -612,7 +655,6 @@ def process_item(item, cache):
         artist_name = release.artists[0].name
         album_title = release.title
         artist_id = release.artists[0].id
-        
         date_added = item.date_added.isoformat() if item.date_added else None
         genre = release.genres
         style = release.styles
@@ -651,6 +693,9 @@ def process_item(item, cache):
         # Get Spotify ID
         spotify_id = get_spotify_id(artist_name, album_title)
 
+        # Get Wikipedia data
+        wikipedia_summary, wikipedia_url = get_wikipedia_data(f"{artist_name} {album_title} (album)", album_title)
+
         # Create dictionary of item information
         cache[str(release_id)] = {
             "Release ID": release_id,
@@ -674,6 +719,8 @@ def process_item(item, cache):
             "Credits": credits,
             "Spotify ID": spotify_id,
             "Artist Info": artist_info,
+            "Wikipedia Summary": wikipedia_summary,
+            "Wikipedia URL": wikipedia_url
         }
 
         # Get Apple Music ID and other data
