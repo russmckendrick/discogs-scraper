@@ -23,10 +23,16 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 
 <!-- section break -->
 
-{% if wikipedia_summary != None -%}
-{{ wikipedia_summary }}
-{% elif apple_music_editorialNotes != None -%}
-{{ apple_music_editorialNotes }}
+{% if wikipedia_summary is not none and apple_music_editorialNotes is not none -%}
+    {% if wikipedia_summary|length > apple_music_editorialNotes|length -%}
+        {{ wikipedia_summary }}
+    {% else -%}
+        {{ apple_music_editorialNotes }}
+    {% endif -%}
+{% elif wikipedia_summary is not none -%}
+    {{ wikipedia_summary }}
+{% elif apple_music_editorialNotes is not none -%}
+    {{ apple_music_editorialNotes }}
 {% endif -%}
 
 {% if apple_music_album_url != None -%}
@@ -52,8 +58,16 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 {% if wikipedia_url -%}
 | Wikipedia URL | {{ wikipedia_url }} |
 {% endif -%}
-{% if wikipedia_summary and apple_music_editorialNotes -%}
-| Apple Music Summary | {{ apple_music_editorialNotes }} |
+{% if wikipedia_summary is not none and apple_music_editorialNotes is not none -%}
+    {% if wikipedia_summary|length < apple_music_editorialNotes|length -%}
+    | Wikipedia Summary | {{ wikipedia_summary }} |
+    {% else -%}
+    | Apple Music Summary | {{ apple_music_editorialNotes }} |
+    {% endif -%}
+{% elif wikipedia_summary is not none -%}
+    | Wikipedia Summary | {{ wikipedia_summary }} |
+{% elif apple_music_editorialNotes is not none -%}
+    | Apple Music Summary | {{ apple_music_editorialNotes }} |
 {% endif -%}
 | Release Year   | {{ release_date }}                                   |
 | Format         | {{ release_formats }} |
@@ -63,3 +77,4 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 | Notes | {{ notes }} |
 {% endif -%}
 | Discogs URL    | [{{ artist }} - {{ album_name }}]({{ release_url }}) |
+
