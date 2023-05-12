@@ -12,8 +12,8 @@ cover:
     alt: "{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}"
     caption: "{{ album_name  | replace('\"','') | safe }} by {{ artist  | replace('\"','') | safe }}"
 additional_images:
-{%- for image_filename in all_image_filenames %}
-    - "{{ image_filename }}"
+{%- for image_url in image_urls %}
+    - "{{ image_url }}"
 {%- endfor %}
 genres: [{% for genre in genres %}"{{ genre }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif %}{% endfor %}]

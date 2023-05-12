@@ -16,6 +16,7 @@ from urllib.request import urlretrieve
 from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
 from datetime import datetime, timedelta
+from tenacity import retry, wait_fixed
 
 # current_time = datetime.now()
 # print(current_time.strftime("%Y-%m-%d_%H-%M-%S"))
@@ -279,7 +280,8 @@ def tidy_text(text):
     
     return text
 
-def download_image(url, filename, retries=3, delay=1):
+@retry(wait=wait_fixed(60))  # Adjust this value as needed
+def download_image(url, filename, retries=5, delay=15):
     """
     Downloads an image from a given URL and saves it to a specified file.
 
@@ -562,20 +564,11 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
         download_image(missing_cover_url, cover_path)
 
-    # Download all images
+    # Store all image URLs
+    image_urls = []
     if "All Images URLs" in item_data:
         for i, url in enumerate(item_data["All Images URLs"]):
-            image_filename = f"{slug}_{i}.jpg"
-            image_path = folder_path / image_filename
-            download_image(url, image_path)
-
-    image_filenames = []
-    if "All Images URLs" in item_data:
-        for i, url in enumerate(item_data["All Images URLs"]):
-            image_filename = f"{slug}_{i}.jpg"
-            image_path = folder_path / image_filename
-            download_image(url, image_path)
-            image_filenames.append(image_filename)
+            image_urls.append(url)
 
     # Render markdown file using Jinja2 template
     env = Environment(loader=FileSystemLoader('.'))
@@ -618,7 +611,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         apple_music_album_release_date = item_data["Apple Music attributes"]["releaseDate"] if "Apple Music attributes" in item_data and "releaseDate" in item_data["Apple Music attributes"] else None,
         wikipedia_summary = wikipedia_summary,
         wikipedia_url = wikipedia_url,
-        all_image_filenames=image_filenames,
+        image_urls=image_urls,
     )
 
     # Save the rendered content to the markdown file
