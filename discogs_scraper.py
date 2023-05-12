@@ -23,78 +23,14 @@ from tenacity import retry, wait_fixed
 # future_time = current_time + timedelta(days=2)
 # print(future_time.strftime("%Y-%m-%d_%H-%M-%S"))
 
-# Set delay between requests and define cache and output directories
+
 CACHE_FILE = 'collection_cache.json'
+LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt"  # File to store the last processed index
 OUTPUT_DIRECTORY = 'website/content/posts'
 ARTIST_DIRECTORY = "website/content/artist"
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8'
-DEFAULT_DELAY = 2
+DEFAULT_DELAY = 2 # Set delay between requests and define cache and output directories
 APPLE_MUSIC_STOREFRONT = "gb"
-
-# Create logs folder if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-# Get the current date and time to append to the log file's name
-current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-# Configure logging with the log file's name, format, and log level
-logging.basicConfig(
-    filename=f'logs/app_{current_time}.log',
-    filemode='w',
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# Load access token and username from secrets.json
-with open('secrets.json', 'r') as f:
-    secrets = json.load(f)
-
-# Store Discogs and Spotify API credentials from secrets.json
-discogs_access_token = secrets['discogs_access_token']
-discogs_username = secrets['discogs_username']
-spotify_client_id = secrets['spotify_client_id']
-spotify_client_secret = secrets['spotify_client_secret']
-apple_music_client_id = secrets['apple_music_client_id']
-apple_developer_team_id = secrets['apple_developer_team_id']
-
-# Initialize Discogs client with the user token
-discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
-
-# Retrieve user information and collection from Discogs
-user = discogs.identity()
-collection = discogs.user(discogs_username).collection_folders[0].releases
-
-# Check if the --all flag is passed to process all items in the collection
-process_all = '--all' in sys.argv
-
-# Check if the --delay flag is passed and set the delay between requests accordingly
-delay_override = next((arg for arg in sys.argv if arg.startswith('--delay=')), None)
-if delay_override:
-    try:
-        delay_value = float(delay_override.split('=')[1])
-        if delay_value < 0:
-            raise ValueError("Delay value must be non-negative")
-        DELAY = delay_value
-    except ValueError as e:
-        logging.error(f"Invalid value for --delay flag. Using default value ({DEFAULT_DELAY}). Error: {e}")
-        DELAY = DEFAULT_DELAY
-else:
-    DELAY = DEFAULT_DELAY
-
-# Check if the --num-items flag is passed and set the number of items to process accordingly
-num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
-if num_items_override:
-    try:
-        num_items = int(num_items_override.split('=')[1])
-    except ValueError:
-        logging.error("Invalid value for --num-items flag. Using default value (10).")
-        num_items = 10
-else:
-    num_items = 10
-
-# Determine the number of items to process based on the flags
-num_items = len(collection) if process_all else num_items
 
 def get_wikipedia_data(target, keyword):
     """
@@ -619,23 +555,6 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         f.write(rendered_content)
     logging.info(f"Saved/Updated file {folder_path}.index.md")
 
-# # Load collection cache or create an empty cache
-# # If the cache file exists, load its contents as a dictionary
-# if os.path.exists(CACHE_FILE):
-#     with open(CACHE_FILE, 'r') as f:
-#         collection_cache = json.load(f)
-# # If the cache file does not exist, create an empty dictionary
-# else:
-#     collection_cache = {}
-
-collection_cache = {}
-
-# Load the cache file
-with open(CACHE_FILE, 'r') as f:
-    for line in f:
-        data = json.loads(line)
-        collection_cache.update(data)
-
 def get_artist_info(artist_id):
     """
     Retrieves information about an artist with the specified ID from Discogs.
@@ -796,8 +715,108 @@ def process_item(item, cache):
 
         return cache[str(release_id)]
 
+# Function to load the last processed index
+def load_last_processed_index():
+    """
+    Load the last processed index from a file.
+
+    This function attempts to open a file containing the last processed index and return it.
+    If the file is not found, it will return 0. If any other exceptions occur, they are logged and 0 is returned.
+
+    Returns:
+        int: The last processed index, or 0 if an error occurred.
+    """
+    try:
+        with open(LAST_PROCESSED_INDEX_FILE, 'r') as f:
+            return int(f.read())
+    except FileNotFoundError:
+        return 0
+    except Exception as e:
+        logging.error(f"Error occurred while loading last processed index: {str(e)}")
+        return 0
+
+
+
+####################################################################################################
+# Main script
+####################################################################################################
+
+# Create logs folder if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+# Get the current date and time to append to the log file's name
+current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+# Configure logging with the log file's name, format, and log level
+logging.basicConfig(
+    filename=f'logs/app_{current_time}.log',
+    filemode='w',
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# Load access token and username from secrets.json
+with open('secrets.json', 'r') as f:
+    secrets = json.load(f)
+
+# Store Discogs and Spotify API credentials from secrets.json
+discogs_access_token = secrets['discogs_access_token']
+discogs_username = secrets['discogs_username']
+spotify_client_id = secrets['spotify_client_id']
+spotify_client_secret = secrets['spotify_client_secret']
+apple_music_client_id = secrets['apple_music_client_id']
+apple_developer_team_id = secrets['apple_developer_team_id']
+
+# Initialize Discogs client with the user token
+discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
+
+# Retrieve user information and collection from Discogs
+user = discogs.identity()
+collection = discogs.user(discogs_username).collection_folders[0].releases
+
+# Check if the --all flag is passed to process all items in the collection
+process_all = '--all' in sys.argv
+
+# Check if the --delay flag is passed and set the delay between requests accordingly
+delay_override = next((arg for arg in sys.argv if arg.startswith('--delay=')), None)
+if delay_override:
+    try:
+        delay_value = float(delay_override.split('=')[1])
+        if delay_value < 0:
+            raise ValueError("Delay value must be non-negative")
+        DELAY = delay_value
+    except ValueError as e:
+        logging.error(f"Invalid value for --delay flag. Using default value ({DEFAULT_DELAY}). Error: {e}")
+        DELAY = DEFAULT_DELAY
+else:
+    DELAY = DEFAULT_DELAY
+
+# Check if the --num-items flag is passed and set the number of items to process accordingly
+num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
+if num_items_override:
+    try:
+        num_items = int(num_items_override.split('=')[1])
+    except ValueError:
+        logging.error("Invalid value for --num-items flag. Using default value (10).")
+        num_items = 10
+else:
+    num_items = 10
+
+# Determine the number of items to process based on the flags
+num_items = len(collection) if process_all else num_items
+
+collection_cache = {}
+
+# Load the cache file
+with open(CACHE_FILE, 'r') as f:
+    for line in f:
+        data = json.loads(line)
+        collection_cache.update(data)
+
 # Initialize a set for processed artists
 processed_artists = set()
+last_processed_index = load_last_processed_index()  # Load from file or initialize to 0
 
 # Generate the Apple Music token
 jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
@@ -806,6 +825,10 @@ jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_mu
 with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
     with open(CACHE_FILE, 'a') as cache_file:
         for i, item in enumerate(collection):
+            if i < last_processed_index:
+                # Skip the already processed items
+                continue
+
             if i >= num_items:
                 break
 
@@ -839,18 +862,17 @@ with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{tota
             # Process the artist and create the artist markdown file if not processed before
             process_artist(artist_info, processed_artists)
 
+            # Update the last processed index
+            last_processed_index = i + 1
+
             # Add a delay between requests to avoid hitting the rate limit
             time.sleep(DELAY)
 
-# No need to save the cache to the file again since it was already updated during processing
-# Save the updated cache to the file
-# with open(CACHE_FILE, 'w') as f:
-#     json.dump(collection_cache, f, indent=4)
+            # Save the last processed index to the file
+            with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
+                f.write(str(last_processed_index))
 
-# Check if the --num-items flag is passed and set the number of items to process
-num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
-if num_items_override:
-    try:
-        num_items = int(num_items_override.split('=')[1])  # Extract the number of items from the command line argument
-    except ValueError:
-        logging.error("Invalid value for --num-items flag. Using default value (10).")
+# Delete the last processed index file after successful completion
+if os.path.exists(LAST_PROCESSED_INDEX_FILE):
+    os.remove(LAST_PROCESSED_INDEX_FILE)
+    logging.info("Deleted the last processed index file.")
