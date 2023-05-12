@@ -453,16 +453,6 @@ def format_release_formats(release_formats):
     return ', '.join(formatted_formats)
 
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
-    """
-    Creates a markdown file for an artist using the provided artist data and saves it to the specified directory.
-
-    Args:
-        artist_data (dict): A dictionary containing the artist's data, including name, slug, profile, aliases, members, and images.
-        output_dir (str, optional): The directory where the artist's markdown file and images should be saved. Defaults to ARTIST_IMAGES_DIRECTORY.
-
-    Returns:
-        None: If artist_data is None or an error occurs, the function logs an error message and returns None.
-    """
     if artist_data is None:
         logging.error('No artist information, skipping')
         return
@@ -473,12 +463,21 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
     image_filename = f"{slug}.jpg"
     image_path = folder_path / image_filename
 
-    # Check if the images list is not empty before accessing it
-    if artist_data["images"]:
+    missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+
+    # Check for Apple Music image first
+    if "attributes" in artist_data and "artwork" in artist_data["attributes"]:
+        apple_music_image = artist_data["attributes"]["artwork"]
+        width = min(1024, apple_music_image["width"])
+        height = min(1024, apple_music_image["height"])
+        apple_music_image_url = apple_music_image["url"].format(w=width, h=height)
+        download_image(apple_music_image_url, image_path)
+    # If no Apple Music image, check for Discogs image
+    elif artist_data["images"]:
         artist_image_url = artist_data["images"][0]
         download_image(artist_image_url, image_path)
+    # If no Discogs image, use missing cover URL
     else:
-        missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
         download_image(missing_cover_url, image_path)
 
     # Check if the artist file already exists
@@ -496,14 +495,28 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
     else:
         some_apple_music_artist_url = None
 
+    # Calculate the lengths of the profile and the wikipedia summary
+    profile = tidy_text(artist_data["profile"]) if artist_data["profile"] else None
+    artist_wikipedia_summary = tidy_text(artist_data['artist_wikipedia_summary']) if artist_data['artist_wikipedia_summary'] else None
+
+    profile_length = len(profile) if profile else 0
+    wikipedia_summary_length = len(artist_wikipedia_summary) if artist_wikipedia_summary else 0
+
+    # Choose the longer one as the summary
+    if profile_length > wikipedia_summary_length:
+        summary = profile
+    else:
+        summary = artist_wikipedia_summary
+
     rendered_content = template.render(
         name=escape_quotes(artist_name),
         slug=sanitize_slug(artist_data["slug"]),
-        profile=tidy_text(artist_data["profile"]),
+        profile=summary,  # use the longer summary
         aliases=artist_data["aliases"],
         members=artist_data["members"],
         image=image_filename,
-        apple_music_artist_url = some_apple_music_artist_url
+        apple_music_artist_url=some_apple_music_artist_url,
+        artist_wikipedia_url=artist_data['artist_wikipedia_url'] if artist_data['artist_wikipedia_url'] else 'none'
     )
 
     # Save the rendered content to the markdown file
@@ -532,14 +545,37 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     # Create the output directory if it doesn't exist
     folder_path.mkdir(parents=True, exist_ok=True)
 
-    # Download album cover
+    # Download album cover and other images
     cover_filename = f"{slug}.jpg"
     cover_path = folder_path / cover_filename
-    if cover_url:
+
+    # Check for Apple Music cover first
+    if "Apple Music attributes" in item_data and "artwork" in item_data["Apple Music attributes"]:
+        apple_music_cover = item_data["Apple Music attributes"]["artwork"]
+        width = min(1024, apple_music_cover["width"])
+        height = min(1024, apple_music_cover["height"])
+        apple_music_cover_url = apple_music_cover["url"].format(w=width, h=height)
+        download_image(apple_music_cover_url, cover_path)
+    elif cover_url:
         download_image(cover_url, cover_path)
     else:
         missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
         download_image(missing_cover_url, cover_path)
+
+    # Download all images
+    if "All Images URLs" in item_data:
+        for i, url in enumerate(item_data["All Images URLs"]):
+            image_filename = f"{slug}_{i}.jpg"
+            image_path = folder_path / image_filename
+            download_image(url, image_path)
+
+    image_filenames = []
+    if "All Images URLs" in item_data:
+        for i, url in enumerate(item_data["All Images URLs"]):
+            image_filename = f"{slug}_{i}.jpg"
+            image_path = folder_path / image_filename
+            download_image(url, image_path)
+            image_filenames.append(image_filename)
 
     # Render markdown file using Jinja2 template
     env = Environment(loader=FileSystemLoader('.'))
@@ -582,6 +618,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         apple_music_album_release_date = item_data["Apple Music attributes"]["releaseDate"] if "Apple Music attributes" in item_data and "releaseDate" in item_data["Apple Music attributes"] else None,
         wikipedia_summary = wikipedia_summary,
         wikipedia_url = wikipedia_url,
+        all_image_filenames=image_filenames,
     )
 
     # Save the rendered content to the markdown file
@@ -614,6 +651,9 @@ def get_artist_info(artist_id):
         # Retrieve the artist from Discogs using the specified ID
         artist = discogs.artist(artist_id)
 
+        # Fetch the Wikipedia summary and URL for the artist
+        artist_wikipedia_summary, artist_wikipedia_url = get_wikipedia_data(artist.name, artist.name)
+
         # Create a dictionary containing information about the artist
         artist_info = {
             'id': artist.id,
@@ -623,7 +663,9 @@ def get_artist_info(artist_id):
             'aliases': [{'id': alias.id, 'name': alias.name} for alias in artist.aliases] if artist.aliases else [],
             'members': [{'id': member.id, 'name': member.name} for member in artist.members] if artist.members else [],
             'images': [image['resource_url'] for image in artist.images] if artist.images else [],
-            "slug": sanitize_slug(artist.name),  # Create a sanitized string representation of the artist name
+            'slug': sanitize_slug(artist.name),  # Create a sanitized string representation of the artist name
+            'artist_wikipedia_summary': artist_wikipedia_summary,  # Add the Wikipedia summary
+            'artist_wikipedia_url': artist_wikipedia_url,  # Add the Wikipedia URL
         }
 
         # Return the artist information dictionary
@@ -633,6 +675,7 @@ def get_artist_info(artist_id):
         # Log an error message if the artist cannot be found or an error occurs
         logging.error(f'Error fetching artist information for ID {artist_id}: {e}')
         return None
+
 
 def process_item(item, cache):
     """
@@ -678,6 +721,7 @@ def process_item(item, cache):
 
         # Get album cover URL
         cover_url = release.images[0]['resource_url'] if release.images else None
+        all_images_urls = [img['resource_url'] for img in release.images] if release.images else None
 
         # Get videos
         videos = [{'title': video.title, 'url': video.url} for video in release.videos] if release.videos else None
@@ -713,6 +757,7 @@ def process_item(item, cache):
             "Rating": rating,
             "Track List": track_list,
             "Album Cover URL": cover_url,
+            "All Images URLs": all_images_urls,
             "Videos": videos,
             "Release URL": release_url,
             "Notes": notes,

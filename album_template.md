@@ -11,6 +11,10 @@ cover:
     image: "{{ cover_filename }}"
     alt: "{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}"
     caption: "{{ album_name  | replace('\"','') | safe }} by {{ artist  | replace('\"','') | safe }}"
+additional_images:
+{%- for image_filename in all_image_filenames %}
+    - "{{ image_filename }}"
+{%- endfor %}
 genres: [{% for genre in genres %}"{{ genre }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 ---
@@ -42,6 +46,7 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 ## Spotify
 {% raw %}{{< spotify type="album" id="{% endraw %}{{ spotify }}{% raw %}" width="100%" height="500" >}}{% endraw %}
 {% endif -%}
+
 {% if first_video_id -%}
 ## Videos
 ### {{ first_video_title }}
@@ -52,6 +57,9 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 - [{{ video.title }}]({{ video.url }}){% endfor %}{% endif -%}
 {% endif %}
 
+## Release Images
+{% raw %}{{< imageGrid >}}{% endraw %}
+
 ## Release Information
 |  Key           | Value                                                |
 | ---------------| ---------------------------------------------------- |
@@ -60,21 +68,20 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 {% endif -%}
 {% if wikipedia_summary is not none and apple_music_editorialNotes is not none -%}
     {% if wikipedia_summary|length < apple_music_editorialNotes|length -%}
-    | Wikipedia Summary | {{ wikipedia_summary }} |
+    | Wikipedia Summary | {{ wikipedia_summary|replace('\n', '<br>') }} |
     {% else -%}
-    | Apple Music Summary | {{ apple_music_editorialNotes }} |
+    | Apple Music Summary | {{ apple_music_editorialNotes|replace('\n', '<br>') }} |
     {% endif -%}
 {% elif wikipedia_summary is not none -%}
-    | Wikipedia Summary | {{ wikipedia_summary }} |
+    | Wikipedia Summary | {{ wikipedia_summary|replace('\n', '<br>') }} |
 {% elif apple_music_editorialNotes is not none -%}
-    | Apple Music Summary | {{ apple_music_editorialNotes }} |
+    | Apple Music Summary | {{ apple_music_editorialNotes|replace('\n', '<br>') }} |
 {% endif -%}
 | Release Year   | {{ release_date }}                                   |
 | Format         | {{ release_formats }} |
 | Label          | {{ label }} |
 | Catalog Number | {{ catalog_number }} |
 {% if notes -%}
-| Notes | {{ notes }} |
+| Notes | {{ notes|replace('\n', '<br>') }} |
 {% endif -%}
 | Discogs URL    | [{{ artist }} - {{ album_name }}]({{ release_url }}) |
-
