@@ -8,3 +8,4 @@ logs
 logs/*
 collection_cache.json
 last_processed_index.txt
+exclude.txt

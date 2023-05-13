@@ -31,22 +31,26 @@ ARTIST_DIRECTORY = "website/content/artist"
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8'
 DEFAULT_DELAY = 2 # Set delay between requests and define cache and output directories
 APPLE_MUSIC_STOREFRONT = "gb"
+MATCHING_THRESHOLD = 0.7
 
-def get_wikipedia_data(target, keyword):
+def get_wikipedia_data(target, keyword, threshold=MATCHING_THRESHOLD):
     """
     Retrieves the Wikipedia summary and URL of a given target.
 
     This function queries the Wikipedia API for the summary and URL of the page corresponding to the provided target.
     If the target leads to a disambiguation page, if the page does not exist, or if the URL does not contain the 
-    specified keyword, the function returns None for both the summary and the URL.
+    specified keyword (matching at least the specified threshold percentage), the function returns None for both the
+    summary and the URL.
 
     Args:
         target (str): The title of the Wikipedia page to be searched for.
         keyword (str): The keyword that the URL must contain.
+        threshold (float): The minimum threshold (between 0 and 1) for keyword matching as a percentage.
 
     Returns:
         tuple: The summary and URL of the Wikipedia page if it exists, is not a disambiguation page, and its URL 
-               contains the specified keyword. Both elements of the tuple are None otherwise.
+               contains the specified keyword (matching at least the threshold percentage). Both elements of the 
+               tuple are None otherwise.
     
     Raises:
         wikipedia.exceptions.DisambiguationError: If the target leads to a disambiguation page.
@@ -54,12 +58,13 @@ def get_wikipedia_data(target, keyword):
     """
     try:
         page = wikipedia.page(target)
-        # Check if the URL contains the keyword
-        # Make comparison case-insensitive and replace spaces with underscores
-        if keyword.lower().replace(' ', '_') in page.url.lower():
+        # Calculate the similarity score between the keyword and the URL
+        keyword_similarity = fuzz.token_set_ratio(keyword.lower(), page.url.lower())
+        # Check if the similarity score meets the threshold
+        if keyword_similarity >= (threshold * 100):
             return page.summary, page.url
         else:
-            logging.error(f"URL of the page for '{target}' does not contain the keyword '{keyword}'.")
+            logging.error(f"URL of the page for '{target}' does not contain a matching keyword with a similarity score above the threshold.")
             return None, None
     except wikipedia.exceptions.DisambiguationError as e:
         # Handle disambiguation error
@@ -69,6 +74,7 @@ def get_wikipedia_data(target, keyword):
         # Handle page not found error
         logging.error(f"PageError: No page found for '{target}' on Wikipedia.")
         return None, None
+
 
 def generate_apple_music_token(private_key_path, key_id, team_id):
     """
@@ -391,7 +397,7 @@ def format_release_formats(release_formats):
     return ', '.join(formatted_formats)
 
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
-    if artist_data is None:
+    if artist_data is None or "name" not in artist_data:
         logging.error('No artist information, skipping')
         return
 
@@ -572,7 +578,7 @@ def get_artist_info(artist_id):
         artist = discogs.artist(artist_id)
 
         # Fetch the Wikipedia summary and URL for the artist
-        artist_wikipedia_summary, artist_wikipedia_url = get_wikipedia_data(artist.name, artist.name)
+        artist_wikipedia_summary, artist_wikipedia_url = get_wikipedia_data(escape_quotes(artist_name), escape_quotes(artist_name))
 
         # Create a dictionary containing information about the artist
         artist_info = {
@@ -658,7 +664,7 @@ def process_item(item, cache):
         spotify_id = get_spotify_id(artist_name, album_title)
 
         # Get Wikipedia data
-        wikipedia_summary, wikipedia_url = get_wikipedia_data(f"{artist_name} {album_title} (album)", album_title)
+        wikipedia_summary, wikipedia_url = get_wikipedia_data(f"{escape_quotes(artist_name)} {album_title} (album)", album_title)
 
         # Create dictionary of item information
         cache[str(release_id)] = {
