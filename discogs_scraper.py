@@ -18,13 +18,10 @@ from tqdm import tqdm
 from datetime import datetime, timedelta
 from tenacity import retry, wait_fixed
 
-# current_time = datetime.now()
-# print(current_time.strftime("%Y-%m-%d_%H-%M-%S"))
-# future_time = current_time + timedelta(days=2)
-# print(future_time.strftime("%Y-%m-%d_%H-%M-%S"))
 
 
 CACHE_FILE = 'collection_cache.json'
+OVERRIDE_CACHE_FILE = 'collection_cache_override.json'
 LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt"  # File to store the last processed index
 OUTPUT_DIRECTORY = 'website/content/posts'
 ARTIST_DIRECTORY = "website/content/artist"
@@ -809,12 +806,24 @@ else:
 num_items = len(collection) if process_all else num_items
 
 collection_cache = {}
+override_cache = {}
 
-# Load the cache file
+# Check if both cache files exist
+if not os.path.exists(CACHE_FILE):
+    raise FileNotFoundError(f"{CACHE_FILE} not found.")
+if not os.path.exists(OVERRIDE_CACHE_FILE):
+    raise FileNotFoundError(f"{OVERRIDE_CACHE_FILE} not found.")
+
+# Load the cache files
 with open(CACHE_FILE, 'r') as f:
     for line in f:
         data = json.loads(line)
         collection_cache.update(data)
+
+with open(OVERRIDE_CACHE_FILE, 'r') as f:
+    for line in f:
+        data = json.loads(line)
+        override_cache.update(data)
 
 # Initialize a set for processed artists
 processed_artists = set()
@@ -838,8 +847,13 @@ with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{tota
 
             # Process the current item
             release_id = item.release.id
-            if str(release_id) in collection_cache:
-                # Retrieve the release data from the cache
+            if str(release_id) in override_cache:
+                # Retrieve the release data from the override cache
+                release_data = override_cache[str(release_id)]
+                artist_info = release_data["Artist Info"]
+                logging.info(f'Using override cache for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
+            elif str(release_id) in collection_cache:
+                # If not in override cache, check the normal cache
                 release_data = collection_cache[str(release_id)]
                 artist_info = release_data["Artist Info"]
                 logging.info(f'Using cached information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')

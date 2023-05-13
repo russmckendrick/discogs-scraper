@@ -7,5 +7,5 @@ backups/*
 logs
 logs/*
 collection_cache.json
+collection_cache_override.json
 last_processed_index.txt
-exclude.txt
