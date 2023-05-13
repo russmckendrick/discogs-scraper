@@ -30,22 +30,30 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 {% if wikipedia_summary is not none and apple_music_editorialNotes is not none -%}
     {% if wikipedia_summary|length > apple_music_editorialNotes|length -%}
         {{ wikipedia_summary }}
+        {% set shortest_content = apple_music_editorialNotes %}
+        {% set display_apple_music_summary = false %}
     {% else -%}
         {{ apple_music_editorialNotes }}
-    {% endif -%}
+        {% set shortest_content = wikipedia_summary %}
+        {% set display_apple_music_summary = true %}
+    {% endif %}
 {% elif wikipedia_summary is not none -%}
     {{ wikipedia_summary }}
+    {% set shortest_content = wikipedia_summary %}
+    {% set display_apple_music_summary = false %}
 {% elif apple_music_editorialNotes is not none -%}
     {{ apple_music_editorialNotes }}
-{% endif -%}
-<br>
+    {% set shortest_content = apple_music_editorialNotes %}
+    {% set display_apple_music_summary = true %}
+{% endif %}
+
 {% if apple_music_album_url != None -%}
 ## Apple Music
-{% raw %}{{< applemusic url="{% endraw %}{{ apple_music_album_url }}{% raw %}" >}}{% endraw %}
-{% elif spotify -%}
+{% raw %}{{< applemusic url="{% endraw %}{{ apple_music_album_url }}{% raw %}" >}}{% endraw %}<br>
+{% elif spotify %}
 ## Spotify
-{% raw %}{{< spotify type="album" id="{% endraw %}{{ spotify }}{% raw %}" width="100%" height="500" >}}{% endraw %}
-{% endif -%}
+{% raw %}{{< spotify type="album" id="{% endraw %}{{ spotify }}{% raw %}" width="100%" height="500" >}}{% endraw %}<br>
+{% endif %}
 
 {% if first_video_id -%}
 ## Videos
@@ -66,18 +74,6 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 {% if wikipedia_url -%}
 | Wikipedia URL | {{ wikipedia_url }} |
 {% endif -%}
-{% if wikipedia_summary is not none and apple_music_editorialNotes is not none -%}
-    {% if wikipedia_summary|length < apple_music_editorialNotes|length -%}
-    | Wikipedia Summary | {{ wikipedia_summary|replace('\n', '<br>') }} |
-    {% else -%}
-    | Apple Music Summary | {{ apple_music_editorialNotes|replace('\n', '<br>') }} |
-    {% endif -%}
-{% elif wikipedia_summary is not none -%}
-    | Wikipedia Summary | {{ wikipedia_summary|replace('\n', '<br>') }} |
-{% elif apple_music_editorialNotes is not none -%}
-    | Apple Music Summary | {{ apple_music_editorialNotes|replace('\n', '<br>') }} |
-{% endif -%}
-| Release Year   | {{ release_date }}                                   |
 | Format         | {{ release_formats }} |
 | Label          | {{ label }} |
 | Catalog Number | {{ catalog_number }} |
