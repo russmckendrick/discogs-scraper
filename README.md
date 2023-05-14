@@ -61,3 +61,11 @@ Enjoy scraping and building your music collection website! 🎶
 ## One More Thing... 🤖
 
 Oh yeah, it was mostly written by ChapGPT 💬 with me debugging 🐛 it and adding some features. 🤓
+
+## Some random links
+
+For when reviewing the wrong matches and you need to move a release to the `collection_cache_overrides.json` file from your `collection_cache.json` file.
+
+- [https://jsonlint.com/](https://jsonlint.com/)
+- [https://www.text-utils.com/json-formatter/](https://www.text-utils.com/json-formatter/)
+- [https://tools.applemediaservices.com/?country=gb](https://tools.applemediaservices.com/?country=gb)

@@ -65,6 +65,7 @@ def get_wikipedia_data(target, keyword):
         if keyword.lower().replace(' ', '_') in page.url.lower():
             return page.summary, page.url
         else:
+            # Log an error message
             logging.error(f"URL of the page for '{target}' does not contain the keyword '{keyword}'.")
             return None, None
     except wikipedia.exceptions.DisambiguationError as e:
