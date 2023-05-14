@@ -1,4 +1,7 @@
+####################################################################################################
 # Import required libraries and modules
+####################################################################################################
+
 import sys
 import json
 import os
@@ -13,21 +16,27 @@ import jwt
 import wikipedia
 from pathlib import Path
 from urllib.request import urlretrieve
-from jinja2 import Environment, FileSystemLoader
 from tqdm import tqdm
 from datetime import datetime, timedelta
 from tenacity import retry, wait_fixed
+from jinja2 import Environment, FileSystemLoader
 
+####################################################################################################
+# Variables
+####################################################################################################
 
+CACHE_FILE = 'collection_cache.json' # File to store the collection cache
+OVERRIDE_CACHE_FILE = 'collection_cache_override.json' # File to store the override collection cache
+LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt" # File to store the last processed index
+OUTPUT_DIRECTORY = 'website/content/posts' # Directory to store the output files
+ARTIST_DIRECTORY = "website/content/artist" # Directory to store artist information
+APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private key file
+DEFAULT_DELAY = 2 # Set delay between requests
+APPLE_MUSIC_STOREFRONT = "gb" # Storefront for Apple Music
 
-CACHE_FILE = 'collection_cache.json'
-OVERRIDE_CACHE_FILE = 'collection_cache_override.json'
-LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt"  # File to store the last processed index
-OUTPUT_DIRECTORY = 'website/content/posts'
-ARTIST_DIRECTORY = "website/content/artist"
-APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8'
-DEFAULT_DELAY = 2 # Set delay between requests and define cache and output directories
-APPLE_MUSIC_STOREFRONT = "gb"
+####################################################################################################
+# Functions
+####################################################################################################
 
 def get_wikipedia_data(target, keyword):
     """
@@ -733,8 +742,6 @@ def load_last_processed_index():
     except Exception as e:
         logging.error(f"Error occurred while loading last processed index: {str(e)}")
         return 0
-
-
 
 ####################################################################################################
 # Main script
