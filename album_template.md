@@ -19,14 +19,6 @@ genres: [{% for genre in genres %}"{{ genre }}"{% if not loop.last %}, {% endif 
 styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 ---
 
-{% raw %}{{< img src="{% endraw %}{{ cover_filename }}{% raw %}" title="{% endraw %}{{ album_name  | replace('\"','') | safe }} by {{ artist | replace('\"','') | safe  }}{% raw %}" >}}{% endraw %}
-
-<!-- section break -->
-
-{{ track_list }}
-
-<!-- section break -->
-
 {% if wikipedia_summary is not none and apple_music_editorialNotes is not none -%}
     {% if wikipedia_summary|length > apple_music_editorialNotes|length -%}
         {{ wikipedia_summary }}
@@ -46,6 +38,9 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
     {% set shortest_content = apple_music_editorialNotes %}
     {% set display_apple_music_summary = true %}
 {% endif %}
+
+## Tracklisting
+{{ track_list }}
 
 {% if apple_music_album_url != None -%}
 ## Apple Music
