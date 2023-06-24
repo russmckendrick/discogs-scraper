@@ -14,7 +14,7 @@ summary: "{{ summary }}"
 {% raw %}{{< /gallery >}}{% endraw %}
 
 {% raw %}{{< notice note >}}{% endraw %}
-This is what GPT had to say about this weeks music selection it is auto generated and might not be 100% correct.
+GPT had to say this about what I listened to last week; it is auto-generated and might not be 100% factual.
 {% raw %}{{< /notice >}}{% endraw %}
 
 {{ gpt3_summary }}
