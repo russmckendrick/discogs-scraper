@@ -1,6 +1,9 @@
+import os
 import requests
 import json
 import argparse
+import wikipediaapi
+import openai
 from datetime import datetime, timedelta
 from collections import Counter
 from jinja2 import Environment, FileSystemLoader
@@ -11,6 +14,27 @@ with open("lastfm-secrets.json") as f:
 user = secrets['user']
 api_key = secrets['api_key']
 url = secrets['url']
+openai_key = secrets['openai_key']
+
+# Function to get Wikipedia summary
+def get_wiki_summary(page_name):
+    page_py = wiki_wiki.page(page_name)
+    if page_py.exists():
+        return page_py.summary[0:500]  # Limit summary to 500 characters
+    return None
+
+# Function to get GPT-3 generated text
+def get_gpt3_text(prompt):
+    completion = openai.ChatCompletion.create(
+        model='gpt-3.5-turbo-16k-0613',
+        messages=[
+            {
+                'role': 'user',
+                'content': prompt
+            }
+        ]
+    )
+    return completion['choices'][0]['message']['content'].strip()
 
 # Get artist data from Last.fm API
 def get_lastfm_artist_data(user, api_key, from_time, to_time):
@@ -72,7 +96,16 @@ def generate_blog_post(top_artists, top_albums, info, week_start, week_end):
     artist_info = {artist: data for (artist, album), data in info.items()}
     album_info = {(artist, album): data for (artist, album), data in info.items()}
     top_artist = top_artists[0][0] if top_artists else 'No artist data'
-    top_album = f'{top_albums[0][0][1]}' if top_albums else 'No album data'
+    top_artist_summary = get_wiki_summary(top_artist)
+    intro = "Write a casual blog post which details what music I have been listening to this week. The blog post should be 900 words long. Feel free to use emjois and markdown formatting to make the post more interesting."
+    other_artists = f"Other artists I listened to this week include {', '.join([artist for artist, count in top_artists[1:10]])}, mention these too the end, but don't repeat any inforation you have already given."
+    ai_generated = "Also, mention that this part of the blog post was AI generated - this part of the post should be short"
+    if top_artist_summary:
+        top_artist_info = f"Information from Wikipedia on {top_artist}, who is the most played artist this week, says {top_artist_summary}."
+    else:
+        top_artist_info = f"The most played artist this week was {top_artist}."
+    gpt3_prompt = f"{intro} {top_artist_info} {other_artists} {ai_generated}" # Construct the full prompt
+    gpt3_summary = get_gpt3_text(gpt3_prompt) # Generate the summary
     context = {
         'date': date_str_start,
         'week_number': week_number,
@@ -81,6 +114,7 @@ def generate_blog_post(top_artists, top_albums, info, week_start, week_end):
         'top_albums': top_albums,
         'album_info': album_info,
         'summary': f"This week's top artist was {top_artist}.",
+        'gpt3_summary': gpt3_summary,
     }
     content = render_template('lastfm-post-template.md', context)
     with open(filename, 'w') as f:
@@ -102,6 +136,8 @@ start_timestamp = int(week_start.timestamp())
 end_timestamp = int(week_end.timestamp())
 
 # Fetch data and generate blog post
+openai.api_key = openai_key
+wiki_wiki = wikipediaapi.Wikipedia('en')
 artist_data = get_lastfm_artist_data(user, api_key, start_timestamp, end_timestamp)
 album_data = get_lastfm_album_data(user, api_key, start_timestamp, end_timestamp)
 collection = get_collection_data()
