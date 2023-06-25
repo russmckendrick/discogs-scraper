@@ -3,7 +3,16 @@ title: "What did I listen to in week {{ week_number }}?"
 date: "{{ date }}"
 draft: false
 summary: "{{ summary }}"
+cover:
+    image: "/img/weekly-tunes-{{ random_number }}.png"
+    relative: false
+tags:
+    - "Vinyl"
 ---
+
+{% raw %}{{< notice note >}}{% endraw %}
+This is what GPT had to say this about what I listened to last week; it is auto-generated and might not be 💯% factual.
+{% raw %}{{< /notice >}}{% endraw %}
 
 {% raw %}{{< gallery columns="4" >}}{% endraw %}
 {%- for artist, count in top_artists %}
@@ -13,11 +22,7 @@ summary: "{{ summary }}"
 {%- endfor -%}
 {% raw %}{{< /gallery >}}{% endraw %}
 
-{% raw %}{{< notice note >}}{% endraw %}
-GPT had to say this about what I listened to last week; it is auto-generated and might not be 100% factual.
-{% raw %}{{< /notice >}}{% endraw %}
-
-{{ gpt3_summary }}
+{{ gpt3_post }}
 
 ## Top Artists (Week {{ week_number }})
 
