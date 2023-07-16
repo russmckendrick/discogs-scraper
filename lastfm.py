@@ -33,7 +33,7 @@ def generate_random_number():
 # Function to get GPT-3 generated text
 def get_gpt3_text(prompt):
     completion = openai.ChatCompletion.create(
-        model='gpt-3.5-turbo-16k-0613',
+        model='gpt-4-0613',
         messages=[
             {
                 'role': 'user',
