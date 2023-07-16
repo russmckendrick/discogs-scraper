@@ -11,7 +11,8 @@ from jinja2 import Environment, FileSystemLoader
 
 # Load user secrets
 with open("lastfm-secrets.json") as f:
- secrets = json.load(f)
+    secrets = json.load(f)
+    
 user = secrets['user']
 api_key = secrets['api_key']
 url = secrets['url']
@@ -99,11 +100,11 @@ def render_template(template_name, context):
 def generate_blog_post(top_artists, top_albums, info, week_start, week_end):
     date_str_start = week_start.strftime('%Y-%m-%d')
     week_number = week_start.strftime('%U')
-    filename = f"{date_str_start}-listened-to-this-week.md"
+    filename = f"content/tunes/{date_str_start}-listened-to-this-week.md"
     artist_info = {artist: data for (artist, album), data in info.items()}
     album_info = {(artist, album): data for (artist, album), data in info.items()}
     top_artist = top_artists[0][0] if top_artists else 'No artist data'
-    top_artist_summary = get_wiki_summary(top_artist)
+    top_artist_summary = get_wiki_summary(top_artist + " band")
     chat_post_summary = f"According to LastFM data the artist I most played this week was {top_artist}. Can you write a short 50 word summary to say this. It is going to be used as a description for a blog post so should be descrptiove and interesting."
     chat_intro = "Write a casual blog post which details what music I have been listening to this week. The blog post should be 1000 words long. Feel free to use emjois and markdown formatting to make the post more interesting."
     if top_artist_summary:
@@ -149,7 +150,11 @@ end_timestamp = int(week_end.timestamp())
 
 # Fetch data and generate blog post
 openai.api_key = openai_key
-wiki_wiki = wikipediaapi.Wikipedia('en')
+wiki_wiki = wikipediaapi.Wikipedia(
+    language='en',
+    extract_format=wikipediaapi.ExtractFormat.WIKI,
+    user_agent="Blog post creator/1.0 (https://www.russ.foo; me@russ.foo)"
+)
 artist_data = get_lastfm_artist_data(user, api_key, start_timestamp, end_timestamp)
 album_data = get_lastfm_album_data(user, api_key, start_timestamp, end_timestamp)
 collection = get_collection_data()
