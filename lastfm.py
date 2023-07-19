@@ -18,16 +18,22 @@ api_key = secrets['api_key']
 url = secrets['url']
 openai_key = secrets['openai_key']
 
-# Download image function
 def download_image(url, folder, name):
     response = requests.get(url, stream=True)
     clean_name = name.replace(' ', '-').replace('/', '-')
-    file_path = os.path.join(folder, f"{clean_name}.jpg")
+    image_file_path = os.path.join(folder, f"{clean_name}.jpg")
+    json_file_path = os.path.join(folder, f"{clean_name}.jpg.meta")
 
     if response.status_code == 200:
-        with open(file_path, 'wb') as out_file:
+        with open(image_file_path, 'wb') as out_file:
             out_file.write(response.content)
-        print(f"Downloaded image to {file_path}")
+        print(f"Downloaded image to {image_file_path}")
+
+        # Create JSON metadata file
+        metadata = {"Title": name}
+        with open(json_file_path, 'w') as json_file:
+            json.dump(metadata, json_file)
+        print(f"Created JSON metadata at {json_file_path}")
     else:
         print(f"Failed to download image from {url}")
 
@@ -111,7 +117,7 @@ def render_template(template_name, context):
 
 # Generate the blog post
 def generate_blog_post(top_artists, top_albums, info, week_start, week_end):
-    date_str_start = week_start.strftime('%Y-%m-%d')
+    date_str_start = week_end.strftime('%Y-%m-%d')
     week_number = week_start.strftime('%U')
     post_folder = f"content/tunes/{date_str_start}-listened-to-this-week"
     os.makedirs(post_folder, exist_ok=True)  # Create blog post directory
