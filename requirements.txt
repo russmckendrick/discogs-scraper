@@ -4,5 +4,5 @@ tqdm
 jinja2
 cryptography
 wikipedia
-jwt
+PyJWT
 tenacity
