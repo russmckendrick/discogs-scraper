@@ -892,7 +892,8 @@ with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{tota
             last_processed_index = i + 1
 
             # Add a delay between requests to avoid hitting the rate limit
-            time.sleep(DELAY)
+            if DELAY > 0:
+                time.sleep(DELAY)
 
             # Save the last processed index to the file
             with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
