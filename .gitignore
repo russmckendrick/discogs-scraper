@@ -1,4 +1,5 @@
 # stuff which should not be in the repo
+.DS_Store
 secrets.json
 website
 website/*
