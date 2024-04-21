@@ -118,7 +118,7 @@ def generate_apple_music_token(private_key_path, key_id, team_id):
     return token
 
 
-def get_apple_music_data(search_type, query, token):
+def get_apple_music_data(search_type, artist, album, token):
     """
     Queries the Apple Music API for a specific data based on the search type and query.
 
@@ -146,30 +146,33 @@ def get_apple_music_data(search_type, query, token):
         'Authorization': f'Bearer {token}'
     }
 
-    search_params = {
-        'term': query,
-        'limit': 1,
-        'types': search_type
-    }
+    search_queries = [
+        f"{artist} {album}",
+        album,
+        # Add more alternative search queries as needed
+    ]
 
-    search_url = f"{base_url}{store_front}/search"
-    search_response = requests.get(search_url, headers=headers, params=search_params)
+    for query in search_queries:
+        search_params = {
+            'term': query,
+            'limit': 1,
+            'types': search_type
+        }
 
-    if search_response.status_code == 200:
-        search_data = search_response.json()
-        if search_type == 'artists' and 'artists' in search_data['results'] and search_data['results']['artists']['data']:
-            artist_data = search_data['results']['artists']['data'][0]
-            return artist_data
-        elif search_type == 'albums' and 'albums' in search_data['results'] and search_data['results']['albums']['data']:
-            album_data = search_data['results']['albums']['data'][0]
-            return album_data
+        search_url = f"{base_url}{store_front}/search"
+        search_response = requests.get(search_url, headers=headers, params=search_params)
+
+        if search_response.status_code == 200:
+            search_data = search_response.json()
+            if search_type == 'albums' and 'albums' in search_data['results'] and search_data['results']['albums']['data']:
+                album_data = search_data['results']['albums']['data'][0]
+                return album_data
+            # Add more checks for other search types if needed
         else:
-            logging.error(f"No {search_type} found for query '{query}'")
-            return None
-    else:
-        logging.error(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
-        return None
+            logging.warning(f"Error {search_response.status_code}: Could not fetch data from Apple Music API for query '{query}'")
 
+    logging.error(f"No {search_type} found for artist '{artist}' and album '{album}'")
+    return None
 
 def escape_quotes(text):
     """
@@ -699,15 +702,44 @@ def process_item(item, cache):
 
         # Get Apple Music ID and other data
         if "various" not in artist_name.lower():
-            apple_music_data = get_apple_music_data('albums', f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', jwt_apple_music_token)
+            apple_music_data = get_apple_music_data('albums', escape_quotes(artist_name), escape_quotes(album_title), jwt_apple_music_token)
             if apple_music_data:
-                for key, value in apple_music_data.items():
-                    cache[str(release_id)][f"Apple Music {key}"] = value
+                # Compare additional metadata to ensure a better match
+                album_year = str(release_date)
+                if 'releaseDate' in apple_music_data['attributes']:
+                    apple_music_year = apple_music_data['attributes']['releaseDate'][:4]
+                    if album_year != apple_music_year:
+                        logging.warning(f"Album year mismatch for '{album_title}' by '{artist_name}'. Discogs: {album_year}, Apple Music: {apple_music_year}")
+                        apple_music_data = None
+
+                if apple_music_data:
+                    track_count = len(track_list)
+                    if 'trackCount' in apple_music_data['attributes']:
+                        apple_music_track_count = apple_music_data['attributes']['trackCount']
+                        if track_count != apple_music_track_count:
+                            logging.warning(f"Track count mismatch for '{album_title}' by '{artist_name}'. Discogs: {track_count}, Apple Music: {apple_music_track_count}")
+                            apple_music_data = None
+
+                if apple_music_data:
+                    for key, value in apple_music_data.items():
+                        cache[str(release_id)][f"Apple Music {key}"] = value
+            else:
+                logging.warning(f"No album data found on Apple Music for '{album_title}' by '{artist_name}'")
 
         # Get artist information
         if apple_music_data:
             discogs_artist_info = get_artist_info(artist_id)
-            apple_music_artist_info = get_apple_music_data('artists', escape_quotes(artist_name), jwt_apple_music_token)
+            apple_music_artist_info = get_apple_music_data('artists', escape_quotes(artist_name), None, jwt_apple_music_token)
+
+            if discogs_artist_info is not None and apple_music_artist_info is not None:
+                # Compare artist names to ensure a match
+                discogs_artist_name = discogs_artist_info['name']
+                apple_music_artist_name = apple_music_artist_info['attributes']['name']
+
+                if discogs_artist_name.lower() != apple_music_artist_name.lower():
+                    logging.warning(f"Artist name mismatch. Discogs: {discogs_artist_name}, Apple Music: {apple_music_artist_name}")
+                    apple_music_artist_info = None
+
             if discogs_artist_info is not None and apple_music_artist_info is not None:
                 artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
             elif discogs_artist_info is not None:
