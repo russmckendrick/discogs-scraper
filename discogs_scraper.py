@@ -14,6 +14,7 @@ import base64
 import random
 import jwt
 import wikipedia
+from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.request import urlretrieve
 from tqdm import tqdm
@@ -148,7 +149,7 @@ def get_apple_music_data(search_type, query, token):
 
     search_params = {
         'term': query,
-        'limit': 1,
+        'limit': 10,  # Retrieve 10 search results
         'types': search_type
     }
 
@@ -157,19 +158,34 @@ def get_apple_music_data(search_type, query, token):
 
     if search_response.status_code == 200:
         search_data = search_response.json()
+
         if search_type == 'artists' and 'artists' in search_data['results'] and search_data['results']['artists']['data']:
-            artist_data = search_data['results']['artists']['data'][0]
-            return artist_data
+            artists_data = search_data['results']['artists']['data']
+            logging.info(f"Search results for artists with query '{query}':")
+            for artist in artists_data:
+                logging.info(f"- {artist['attributes']['name']}")
+            
+            # Find the artist with the closest name match
+            best_match = max(artists_data, key=lambda x: SequenceMatcher(None, query.lower(), x['attributes']['name'].lower()).ratio())
+            return best_match
+
         elif search_type == 'albums' and 'albums' in search_data['results'] and search_data['results']['albums']['data']:
-            album_data = search_data['results']['albums']['data'][0]
-            return album_data
+            albums_data = search_data['results']['albums']['data']
+            logging.info(f"Search results for albums with query '{query}':")
+            for album in albums_data:
+                logging.info(f"- {album['attributes']['name']} by {album['attributes']['artistName']}")
+            
+            # Find the album with the closest name match
+            best_match = max(albums_data, key=lambda x: SequenceMatcher(None, query.lower(), x['attributes']['name'].lower()).ratio())
+            return best_match
+
         else:
             logging.error(f"No {search_type} found for query '{query}'")
             return None
+
     else:
         logging.error(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
         return None
-
 
 def escape_quotes(text):
     """
