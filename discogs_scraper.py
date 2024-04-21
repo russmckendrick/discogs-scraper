@@ -149,7 +149,7 @@ def get_apple_music_data(search_type, query, token):
 
     search_params = {
         'term': query,
-        'limit': 10,  # Retrieve 10 search results
+        'limit': 10,
         'types': search_type
     }
 
