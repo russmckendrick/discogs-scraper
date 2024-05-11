@@ -841,13 +841,27 @@ if not os.path.exists(OVERRIDE_CACHE_FILE):
 # Load the cache files
 with open(CACHE_FILE, 'r') as f:
     for line in f:
-        data = json.loads(line)
-        collection_cache.update(data)
+        try:
+            data = json.loads(line)
+            if isinstance(data, dict) and len(data) == 1:
+                collection_cache.update(data)
+            else:
+                logging.warning(f"Skipping invalid data in {CACHE_FILE}: {line.strip()}")
+        except json.decoder.JSONDecodeError as e:
+            logging.error(f"Error parsing JSON in {CACHE_FILE}: {e}")
+            # Skip the problematic line and continue with the next line
 
 with open(OVERRIDE_CACHE_FILE, 'r') as f:
     for line in f:
-        data = json.loads(line)
-        override_cache.update(data)
+        try:
+            data = json.loads(line)
+            if isinstance(data, dict) and len(data) == 1:
+                override_cache.update(data)
+            else:
+                logging.warning(f"Skipping invalid data in {OVERRIDE_CACHE_FILE}: {line.strip()}")
+        except json.decoder.JSONDecodeError as e:
+            logging.error(f"Error parsing JSON in {OVERRIDE_CACHE_FILE}: {e}")
+            # Skip the problematic line and continue with the next line
 
 # Initialize a set for processed artists
 processed_artists = set()
