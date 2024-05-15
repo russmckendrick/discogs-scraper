@@ -1,8 +1,10 @@
 ---
-title: "What did I listen to in week {{ week_number }}?"
+title: "{{ title }}"
+author: "Russ McKendrick"
 date: "{{ date }}"
+description: "{{ summary }}"
 draft: false
-summary: "{{ summary }}"
+showToc: true
 cover:
     image: "/img/weekly-tunes-{{ random_number }}.png"
     relative: false
@@ -14,9 +16,9 @@ tags:
 This is what GPT had to say this about what I listened to last week; it is auto-generated and might not be 💯% factual.
 {% raw %}{{< /notice >}}{% endraw %}
 
-{% raw %}{{< gallery match="artists/*" sortOrder="desc" rowHeight="150" margins="5" thumbnailResizeOptions="600x600 q90 Lanczos" showExif=true previewType="blur" embedPreview=true loadJQuery=true >}}{% endraw %}
+{% raw %}{{< gallery match="artists/*" sortOrder="desc" rowHeight="250" margins="5" thumbnailResizeOptions="600x600 q90 Lanczos" showExif=true previewType="blur" embedPreview=true loadJQuery=true >}}{% endraw %}
 
-{{ gpt3_post }}
+{{ blog_post }}
 
 ## Top Artists (Week {{ week_number }})
 
@@ -38,4 +40,4 @@ This is what GPT had to say this about what I listened to last week; it is auto-
 {% endif %}
 {%- endfor %}
 
-{% raw %}{{< gallery match="albums/*" sortOrder="desc" rowHeight="150" margins="5" thumbnailResizeOptions="600x600 q90 Lanczos" showExif=true previewType="blur" embedPreview=true loadJQuery=flase >}}{% endraw %}
+{% raw %}{{< gallery match="albums/*" sortOrder="desc" rowHeight="200" margins="5" thumbnailResizeOptions="600x600 q90 Lanczos" showExif=true previewType="blur" embedPreview=true loadJQuery=flase >}}{% endraw %}
