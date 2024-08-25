@@ -547,6 +547,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     rendered_content = template.render(
         title="{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
         artist=escape_quotes(artist),
+        artist_slug=sanitize_slug(f"{artist}"),
         album_name=album_name,
         date_added=datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         release_id=release_id,
@@ -690,6 +691,7 @@ def process_item(item, cache):
             "Release ID": release_id,
             "Artist Name": artist_name,
             "Album Title": album_title,
+            "Slug": slug,
             "Slug": slug,
             "Date Added": date_added,
             "Genre": genre,
