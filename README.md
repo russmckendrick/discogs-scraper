@@ -1,6 +1,6 @@
 # Discogs Scraper 🎵
 
-A basic scraper for generating files for [https://www.mckendrick.rocks/](https://www.mckendrick.rocks/) 🎸. While this was initially created for personal use, feel free to use it if you find it helpful! 😃 Although the documentation is minimal, the code is fairly straightforward.
+A basic scraper for generating files for [https://www.russ.fm/](https://www.russ.fm/) 🎸. While this was initially created for personal use, feel free to use it if you find it helpful! 😃 Although the documentation is minimal, the code is fairly straightforward.
 
 You can find the repo containing the website files and config at [russmckendrick/records](https://github.com/russmckendrick/records/), it's a [Hugo-powered](https://gohugo.io/) site and there are ALOT of files.
 

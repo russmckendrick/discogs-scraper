@@ -29,7 +29,7 @@ from jinja2 import Environment, FileSystemLoader
 CACHE_FILE = 'collection_cache.json' # File to store the collection cache
 OVERRIDE_CACHE_FILE = 'collection_cache_override.json' # File to store the override collection cache
 LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt" # File to store the last processed index
-OUTPUT_DIRECTORY = 'website/content/posts' # Directory to store the output files
+OUTPUT_DIRECTORY = 'website/content/albums' # Directory to store the output files
 ARTIST_DIRECTORY = "website/content/artist" # Directory to store artist information
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private key file
 DEFAULT_DELAY = 2 # Set delay between requests
