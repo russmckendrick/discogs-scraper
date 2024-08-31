@@ -34,6 +34,7 @@ ARTIST_DIRECTORY = "website/content/artist" # Directory to store artist informat
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private key file
 DEFAULT_DELAY = 2 # Set delay between requests
 APPLE_MUSIC_STOREFRONT = "gb" # Storefront for Apple Music
+SKIP_RELEASE_FILE = 'skip_releases.txt'
 
 ####################################################################################################
 # Functions
@@ -762,6 +763,23 @@ def load_last_processed_index():
         logging.error(f"Error occurred while loading last processed index: {str(e)}")
         return 0
 
+def load_skip_releases():
+    """
+    Load release IDs to skip from a file.
+
+    Returns:
+        set: A set of release IDs to skip.
+    """
+    skip_releases = set()
+    try:
+        with open(SKIP_RELEASE_FILE, 'r') as f:
+            for line in f:
+                skip_releases.add(line.strip())
+        logging.info(f"Loaded {len(skip_releases)} release IDs to skip.")
+    except FileNotFoundError:
+        logging.warning(f"{SKIP_RELEASE_FILE} not found. No releases will be skipped.")
+    return skip_releases
+
 ####################################################################################################
 # Main script
 ####################################################################################################
@@ -769,6 +787,8 @@ def load_last_processed_index():
 # Create logs folder if it doesn't exist
 if not os.path.exists('logs'):
     os.makedirs('logs')
+
+skip_releases = load_skip_releases()
 
 # Get the current date and time to append to the log file's name
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -886,29 +906,37 @@ with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{tota
                 break
 
             # Process the current item
-            release_id = item.release.id
-            if str(release_id) in override_cache:
+            release_id = str(item.release.id)
+            
+            # Check if the release should be skipped
+            if release_id in skip_releases:
+                logging.info(f"Skipping release ID {release_id} as it's in the skip list.")
+                progress_bar.update(1)
+                continue
+
+            if release_id in override_cache:
                 # Retrieve the release data from the override cache
-                release_data = override_cache[str(release_id)]
+                release_data = override_cache[release_id]
                 artist_info = release_data["Artist Info"]
                 logging.info(f'Using override cache for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-            elif str(release_id) in collection_cache:
+            elif release_id in collection_cache:
                 # If not in override cache, check the normal cache
-                release_data = collection_cache[str(release_id)]
+                release_data = collection_cache[release_id]
                 artist_info = release_data["Artist Info"]
                 logging.info(f'Using cached information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
             else:
                 # Fetch the release data and update the cache
                 process_item(item, collection_cache)
-                release_data = collection_cache[str(release_id)]
+                release_data = collection_cache[release_id]
                 artist_info = release_data["Artist Info"]
                 logging.info(f'Fetching information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
 
                 # Write the current item to the cache file
-                cache_file.write(json.dumps({str(release_id): release_data}) + '\n')
+                cache_file.write(json.dumps({release_id: release_data}) + '\n')
 
                 # Log the action of writing to the cache
                 logging.info(f'Writing information to cache for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
+
 
             # Update the progress bar with current item information
             progress_bar.set_description(f'Currently Processing: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
