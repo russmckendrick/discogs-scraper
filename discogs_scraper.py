@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from tenacity import retry, wait_fixed
 from jinja2 import Environment, FileSystemLoader
 from db_handler import DatabaseHandler
+import argparse
 
 ####################################################################################################
 # Variables
@@ -34,6 +35,7 @@ APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private
 DEFAULT_DELAY = 2 # Set delay between requests
 APPLE_MUSIC_STOREFRONT = "gb" # Storefront for Apple Music
 SKIP_RELEASE_FILE = 'skip_releases.txt'
+LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt"
 
 ####################################################################################################
 # Functions
@@ -249,6 +251,44 @@ def get_apple_music_data(search_type, query, token):
         logging.error(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
         return None
 
+@retry(wait=wait_fixed(60))  # Adjust this value as needed
+def download_image(url, filename, retries=5, delay=15):
+    """
+    Downloads an image from Apple Music, but only tracks Discogs images for manual download.
+    
+    Args:
+        url (str): The URL of the image to download.
+        filename (str): The path and name of the file to save the image to.
+        retries (int, optional): Number of retries for Apple Music downloads. Defaults to 5.
+        delay (int, optional): Delay between retries in seconds. Defaults to 15.
+    """
+    folder_path = Path(filename).parent
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    if os.path.exists(filename):
+        logging.info(f"Image file {filename} already exists. Skipping download.")
+        return
+
+    # Check if this is an Apple Music URL
+    if "mzstatic.com" in url:
+        for attempt in range(retries):
+            try:
+                logging.info(f"Downloading Apple Music image to {filename} (Attempt {attempt + 1})")
+                urlretrieve(url, filename)
+                break
+            except Exception as e:
+                logging.error(f'Unable to download Apple Music image {url}, error {e}')
+                if attempt < retries - 1:
+                    time.sleep(delay)
+                else:
+                    logging.error(f'Failed to download Apple Music image {url} after {retries} attempts')
+    else:
+        # For Discogs images, just track them for manual download
+        if not hasattr(download_image, 'missing_images'):
+            download_image.missing_images = set()
+        download_image.missing_images.add((filename, url))
+        logging.info(f"Added Discogs image {filename} to missing images list")
+
 def escape_quotes(text):
     """
     Escapes double quotes in a given text.
@@ -300,36 +340,6 @@ def tidy_text(text):
     text = text.strip()  # Remove leading and trailing whitespace
     
     return text
-
-@retry(wait=wait_fixed(60))  # Adjust this value as needed
-def download_image(url, filename, retries=5, delay=15):
-    """
-    Downloads an image from a given URL and saves it to a specified file.
-
-    Args:
-        url (str): The URL of the image to download.
-        filename (str): The path and name of the file to save the image to.
-        retries (int, optional): The number of times to retry the download if it fails. Defaults to 3.
-        delay (int, optional): The time to wait (in seconds) between retries. Defaults to 1.
-    """
-    folder_path = Path(filename).parent
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-    if os.path.exists(filename):
-        logging.info(f"Image file {filename} already exists. Skipping download.")
-        return
-
-    for attempt in range(retries):
-        try:
-            logging.info(f"Image file {filename} doesn't exist. Downloading. (Attempt {attempt + 1})")
-            urlretrieve(url, filename)
-            break
-        except Exception as e:
-            logging.error(f'Unable to download image {url}, error {e}')
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                logging.error(f'Failed to download image {url} after {retries} attempts')
 
 def extract_youtube_id(url):
     """
@@ -627,8 +637,8 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         styles=styles,
         track_list=format_tracklist(item_data["Track List"]),
         first_video_id=extract_youtube_id(first_video["url"]) if first_video else None,
-        first_video_title=first_video["title"] if first_video else None,
-        additional_videos=additional_videos,
+        first_video_title=sanitize_youtube_title(first_video["title"]) if first_video else None,
+        additional_videos=[{**video, "title": sanitize_youtube_title(video["title"])} for video in additional_videos] if additional_videos else None,
         release_date=item_data["Release Date"],
         release_url=item_data["Release URL"],
         label=item_data["Label"],
@@ -648,6 +658,24 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
     with open(folder_path / "index.md", "w") as f:
         f.write(rendered_content)
     logging.info(f"Saved/Updated file {folder_path}.index.md")
+
+def sanitize_youtube_title(title):
+    """
+    Sanitizes a YouTube video title by removing or escaping special characters.
+    
+    Args:
+        title (str): The YouTube video title to sanitize.
+        
+    Returns:
+        str: The sanitized title safe for use in Hugo shortcodes.
+    """
+    if not title:
+        return title
+    # Remove quotes and other potentially problematic characters
+    title = title.replace('"', '').replace("'", "").replace("(", "").replace(")", "")
+    # Remove any other special characters that might cause issues
+    title = re.sub(r'[^\w\s-]', '', title)
+    return title
 
 def get_artist_info(artist_name, discogs_client):
     """
@@ -832,77 +860,46 @@ def load_skip_releases():
     return db.get_skip_releases()
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Process Discogs collection and create markdown files.')
+    parser.add_argument('--all', action='store_true', help='Process all items in the collection')
+    parser.add_argument('--delay', type=int, default=DEFAULT_DELAY, help=f'Delay between requests in seconds (default: {DEFAULT_DELAY})')
+    args = parser.parse_args()
+
+    # Set up logging
+    logging.basicConfig(level=logging.INFO)
+
+    # Set the delay for requests
+    global DELAY
+    DELAY = args.delay
+
     # Initialize the database handler
     db_handler = DatabaseHandler(DB_PATH)
-    
-    # Create logs folder if it doesn't exist
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
 
+    # Load skip releases
     skip_releases = load_skip_releases()
+    logging.info(f"Loaded {len(skip_releases)} releases to skip")
 
-    # Get the current date and time to append to the log file's name
-    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    # Configure logging
-    logging.basicConfig(
-        filename=f'logs/app_{current_time}.log',
-        filemode='w',
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        level=logging.INFO
-    )
-
-    # Load access token and username from secrets.json
+    # Load secrets
     with open('secrets.json', 'r') as f:
         secrets = json.load(f)
 
-    # Store API credentials from secrets.json
+    # Get API credentials
     discogs_access_token = secrets['discogs_access_token']
-    discogs_username = secrets['discogs_username']
     spotify_client_id = secrets['spotify_client_id']
     spotify_client_secret = secrets['spotify_client_secret']
     apple_music_client_id = secrets['apple_music_client_id']
     apple_developer_team_id = secrets['apple_developer_team_id']
 
-    # Initialize Discogs client
-    discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
+    # Initialize Discogs client and get collection
+    discogs = discogs_client.Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
+    me = discogs.identity()
+    collection = me.collection_folders[0].releases
+    num_items = len(collection)
+    logging.info(f"Found {num_items} items in collection")
 
-    # Retrieve user information and collection
-    user = discogs.identity()
-    collection = discogs.user(discogs_username).collection_folders[0].releases
-
-    # Process command line arguments
-    process_all = '--all' in sys.argv
-    
-    delay_override = next((arg for arg in sys.argv if arg.startswith('--delay=')), None)
-    if delay_override:
-        try:
-            delay_value = float(delay_override.split('=')[1])
-            if delay_value < 0:
-                raise ValueError("Delay value must be non-negative")
-            DELAY = delay_value
-        except ValueError as e:
-            logging.error(f"Invalid value for --delay flag. Using default value ({DEFAULT_DELAY}). Error: {e}")
-            DELAY = DEFAULT_DELAY
-    else:
-        DELAY = DEFAULT_DELAY
-
-    num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
-    if num_items_override:
-        try:
-            num_items = int(num_items_override.split('=')[1])
-        except ValueError:
-            logging.error("Invalid value for --num-items flag. Using default value (10).")
-            num_items = 10
-    else:
-        num_items = 10
-
-    # Determine number of items to process
-    num_items = len(collection) if process_all else num_items
-
-    # Initialize processed artists set and get last index
+    # Initialize processed artists set
     processed_artists = set()
-    last_processed_index = load_last_processed_index()
 
     # Get Spotify token
     spotify_token = get_spotify_token(spotify_client_id, spotify_client_secret)
@@ -910,37 +907,54 @@ def main():
     # Generate the Apple Music token
     jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
 
-    # Iterate through the collection, update the cache, and create the markdown file
+    # Process all items in the collection
     with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
-        # Update the progress bar to reflect already processed items
-        progress_bar.update(last_processed_index)
-        
-        for i, item in enumerate(collection):
-            if i < last_processed_index:
-                continue
-                
+        for item in collection:
             try:
-                item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
+                # Skip if in skip_releases (compare as integers)
+                if item.release.id in skip_releases:
+                    logging.info(f"Skipping release {item.release.id} (in skip list)")
+                    progress_bar.update(1)
+                    continue
+
+                # For non-skipped items, check cache first
+                cached_data = db_handler.get_release(item.release.id)
+                
+                if cached_data and not args.all:
+                    # Use cached data if it exists and --all is not set
+                    item_data = cached_data
+                    logging.debug(f"Using cached data for release {item.release.id}")
+                else:
+                    # Fetch from Discogs API if not in cache or --all is set
+                    logging.debug(f"Fetching data for release {item.release.id} from Discogs API")
+                    item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
+                    
+                    # Add delay between API requests
+                    if DELAY > 0:
+                        time.sleep(DELAY)
+
+                # Create markdown file if we have data
                 if item_data:
                     create_markdown_file(item_data)
-                    
-                # Save progress
-                db_handler.save_last_processed_index(i + 1)
-                progress_bar.update(1)
                 
-            except Exception as e:
-                logging.error(f"Error processing item at index {i}: {str(e)}")
-                db_handler.add_skip_release(item.release.id)
-                continue
-            
-            # Add a delay between requests to avoid hitting the rate limit
-            if DELAY > 0:
-                time.sleep(DELAY)
+                progress_bar.update(1)
 
-    # Delete the last processed index file after successful completion
-    if os.path.exists(LAST_PROCESSED_INDEX_FILE):
-        os.remove(LAST_PROCESSED_INDEX_FILE)
-        logging.info("Deleted the last processed index file.")
+            except Exception as e:
+                logging.error(f"Error processing release {item.release.id}: {str(e)}")
+                progress_bar.update(1)
+                continue
+
+    # Print summary of missing images
+    if hasattr(download_image, 'missing_images') and download_image.missing_images:
+        print("\nMissing images that need to be downloaded:")
+        print("==========================================")
+        for filename, url in sorted(download_image.missing_images):
+            print(f"Target path: {filename}")
+            print(f"Source URL: {url}")
+            print("-" * 50)
+        print(f"\nTotal missing images: {len(download_image.missing_images)}")
+
+    logging.info("Processing complete")
 
 if __name__ == "__main__":
     main()
