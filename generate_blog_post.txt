@@ -1,8 +1,0 @@
-crewai
-crewai_tools
-duckduckgo-search
-fuzzywuzzy
-jinja2
-langchain_community
-python-Levenshtein
-requests

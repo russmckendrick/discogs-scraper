@@ -7,8 +7,7 @@ backups
 backups/*
 logs
 logs/*
-collection_cache.json
-collection_cache_override.json
+collection_cache*
 last_processed_index.txt
 lastfm-secrets.json
 2023-*
@@ -16,3 +15,4 @@ content
 .discogs
 .dbindex.json
 skip_releases.txt
+*pycache*

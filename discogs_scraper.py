@@ -21,14 +21,13 @@ from tqdm import tqdm
 from datetime import datetime, timedelta
 from tenacity import retry, wait_fixed
 from jinja2 import Environment, FileSystemLoader
+from db_handler import DatabaseHandler
 
 ####################################################################################################
 # Variables
 ####################################################################################################
 
-CACHE_FILE = 'collection_cache.json' # File to store the collection cache
-OVERRIDE_CACHE_FILE = 'collection_cache_override.json' # File to store the override collection cache
-LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt" # File to store the last processed index
+DB_PATH = 'collection_cache.db' # Database path for caching
 OUTPUT_DIRECTORY = 'website/content/albums' # Directory to store the output files
 ARTIST_DIRECTORY = "website/content/artist" # Directory to store artist information
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private key file
@@ -55,28 +54,90 @@ def get_wikipedia_data(target, keyword):
     Returns:
         tuple: The summary and URL of the Wikipedia page if it exists, is not a disambiguation page, and its URL 
                contains the specified keyword. Both elements of the tuple are None otherwise.
-    
-    Raises:
-        wikipedia.exceptions.DisambiguationError: If the target leads to a disambiguation page.
-        wikipedia.exceptions.PageError: If the Wikipedia page does not exist.
     """
+    def normalize_text(text):
+        """Helper function to normalize text for comparison"""
+        # Remove common suffixes and prefixes
+        text = text.lower()
+        text = text.replace("(album)", "").strip()
+        # Handle special characters
+        text = text.replace("'s", "s")  # Handle possessives
+        text = text.replace("'", "")    # Remove other apostrophes
+        text = text.replace("%27", "")  # Handle URL-encoded apostrophes
+        text = text.replace("_", "")    # Remove underscores
+        text = text.replace(" ", "")    # Remove spaces
+        text = text.replace("-", "")    # Remove hyphens
+        text = text.replace(".", "")    # Remove periods
+        return text
+
+    def check_url_match(url, search_keyword):
+        """Helper function to check if URL matches the keyword"""
+        normalized_url = normalize_text(url)
+        normalized_keyword = normalize_text(search_keyword)
+        return normalized_keyword in normalized_url
+
     try:
-        page = wikipedia.page(target)
-        # Check if the URL contains the keyword
-        # Make comparison case-insensitive and replace spaces with underscores
-        if keyword.lower().replace(' ', '_') in page.url.lower():
-            return page.summary, page.url
-        else:
-            # Log an error message
-            logging.error(f"URL of the page for '{target}' does not contain the keyword '{keyword}'.")
-            return None, None
-    except wikipedia.exceptions.DisambiguationError as e:
-        # Handle disambiguation error
-        logging.error(f"DisambiguationError: Multiple potential matches found for '{target}' on Wikipedia.")
+        # First try: direct search with (album)
+        try:
+            page = wikipedia.page(target)
+            if check_url_match(page.url, keyword):
+                return page.summary, page.url
+        except wikipedia.exceptions.DisambiguationError as e:
+            # If we get a disambiguation error, try the first few options
+            for option in e.options[:3]:
+                try:
+                    option_page = wikipedia.page(option)
+                    if check_url_match(option_page.url, keyword):
+                        return option_page.summary, option_page.url
+                except:
+                    continue
+        except:
+            pass
+
+        # Second try: search without (album)
+        clean_target = target.replace(" (album)", "")
+        try:
+            page = wikipedia.page(clean_target)
+            if check_url_match(page.url, keyword):
+                return page.summary, page.url
+        except wikipedia.exceptions.DisambiguationError as e:
+            # Try the first few disambiguation options
+            for option in e.options[:3]:
+                try:
+                    option_page = wikipedia.page(option)
+                    if check_url_match(option_page.url, keyword):
+                        return option_page.summary, option_page.url
+                except:
+                    continue
+        except:
+            pass
+
+        # Third try: just the album name
+        try:
+            page = wikipedia.page(keyword)
+            if check_url_match(page.url, keyword):
+                return page.summary, page.url
+        except:
+            pass
+
+        # If we get here, log the failure with details at debug level
+        logging.debug(f"Wikipedia match failed for '{target}':")
+        logging.debug(f"  - Tried searches:")
+        logging.debug(f"    1. '{target}'")
+        logging.debug(f"    2. '{clean_target}'")
+        logging.debug(f"    3. '{keyword}'")
+        if 'page' in locals():
+            logging.debug(f"  - Last found URL: {page.url}")
+            logging.debug(f"  - Looking for keyword: '{keyword}'")
+            logging.debug(f"  - Normalized URL: {normalize_text(page.url)}")
+            logging.debug(f"  - Normalized keyword: {normalize_text(keyword)}")
         return None, None
+
     except wikipedia.exceptions.PageError as e:
-        # Handle page not found error
-        logging.error(f"PageError: No page found for '{target}' on Wikipedia.")
+        logging.debug(f"PageError: No page found for any of these searches:")
+        logging.debug(f"  1. '{target}'")
+        logging.debug(f"  2. '{clean_target}'")
+        logging.debug(f"  3. '{keyword}'")
         return None, None
 
 def generate_apple_music_token(private_key_path, key_id, team_id):
@@ -285,18 +346,18 @@ def extract_youtube_id(url):
         return youtube_id_match.group(0)
     return None
 
-def get_spotify_id(artist, album_name):
+def get_spotify_id(artist, album_name, spotify_token):
     """
     Gets the Spotify ID of an album given the artist and album name.
     
     Args:
         artist (str): The name of the artist.
         album_name (str): The name of the album.
+        spotify_token (str): The Spotify API token.
         
     Returns:
         str: The Spotify ID of the album, or None if not found.
     """
-    token = get_spotify_token()
     url = 'https://api.spotify.com/v1/search'
     params = {
         'q': f'artist:{artist} album:{album_name}',
@@ -304,7 +365,7 @@ def get_spotify_id(artist, album_name):
         'limit': 1
     }
     headers = {
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {spotify_token}'
     }
 
     response = requests.get(url, headers=headers, params=params)
@@ -315,27 +376,35 @@ def get_spotify_id(artist, album_name):
             return spotify_id
     return None
 
-def get_spotify_token():
+def get_spotify_token(client_id, client_secret):
     """
     Gets an access token for the Spotify API using client credentials authentication.
     
+    Args:
+        client_id (str): Spotify API client ID
+        client_secret (str): Spotify API client secret
+        
     Returns:
         str: The access token, or None if not obtained.
     """
     url = 'https://accounts.spotify.com/api/token'
     headers = {
-        'Authorization': f'Basic {base64.b64encode(f"{spotify_client_id}:{spotify_client_secret}".encode()).decode()}'
+        'Authorization': f'Basic {base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()}'
     }
     data = {
         'grant_type': 'client_credentials'
     }
 
-    response = requests.post(url, headers=headers, data=data)
-    if response.status_code == 200:
-        json_response = response.json()
-        access_token = json_response.get('access_token')
-        return access_token
-    return None
+    try:
+        response = requests.post(url, headers=headers, data=data)
+        if response.status_code == 200:
+            return response.json()['access_token']
+        else:
+            logging.error(f"Failed to get Spotify token. Status code: {response.status_code}")
+            return None
+    except Exception as e:
+        logging.error(f"Error getting Spotify token: {str(e)}")
+        return None
 
 def process_artist(artist_info, processed_artists):
     """
@@ -580,76 +649,68 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
         f.write(rendered_content)
     logging.info(f"Saved/Updated file {folder_path}.index.md")
 
-def get_artist_info(artist_id):
+def get_artist_info(artist_name, discogs_client):
     """
-    Retrieves information about an artist with the specified ID from Discogs.
-
+    Get artist information from Discogs API.
+    
     Args:
-        artist_id (int): The ID of the artist to fetch information for.
-
+        artist_name (str): Name of the artist to search for
+        discogs_client: Authenticated Discogs client instance
+        
     Returns:
-        dict or None: A dictionary containing information about the artist, including their ID, name, profile, URL, aliases,
-        members, images, and slug. If the artist cannot be found or an error occurs, it returns None.
+        dict: Artist information if found, None otherwise
     """
-
-    try:
-        # Retrieve the artist from Discogs using the specified ID
-        artist = discogs.artist(artist_id)
-
-        # Fetch the Wikipedia summary and URL for the artist
-        artist_wikipedia_summary, artist_wikipedia_url = get_wikipedia_data(f"{escape_quotes(artist.name)} (band)", escape_quotes(artist.name))
-
-
-
-        # Create a dictionary containing information about the artist
-        artist_info = {
-            'id': artist.id,
-            'name': artist.name,
-            'profile': artist.profile,
-            'url': artist.url,
-            'aliases': [{'id': alias.id, 'name': alias.name} for alias in artist.aliases] if artist.aliases else [],
-            'members': [{'id': member.id, 'name': member.name} for member in artist.members] if artist.members else [],
-            'images': [image['resource_url'] for image in artist.images] if artist.images else [],
-            'slug': sanitize_slug(artist.name),  # Create a sanitized string representation of the artist name
-            'artist_wikipedia_summary': artist_wikipedia_summary,  # Add the Wikipedia summary
-            'artist_wikipedia_url': artist_wikipedia_url,  # Add the Wikipedia URL
-        }
-
-        # Return the artist information dictionary
-        return artist_info
-
-    except Exception as e:
-        # Log an error message if the artist cannot be found or an error occurs
-        logging.error(f'Error fetching artist information for ID {artist_id}: {e}')
+    # Skip lookup for Various Artists compilations
+    if artist_name.lower() == "various":
         return None
+        
+    try:
+        # Search for the artist
+        results = discogs_client.search(artist_name, type='artist')
+        if results and len(results) > 0:
+            artist = results[0]
+            return {
+                'name': artist.name,
+                'profile': artist.data.get('profile', ''),
+                'urls': artist.data.get('urls', [])
+            }
+    except Exception as e:
+        logging.error(f"Error fetching artist information for {artist_name}: {str(e)}")
+    return None
 
-
-def process_item(item, cache):
+def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=None, discogs_client=None):
     """
     Process a single Discogs item and create a dictionary of the item's information.
-
+    
     Args:
         item (discogs_client.models.Item): The Discogs item to be processed.
-        cache (dict): A dictionary to store processed items in.
-
+        db_handler (DatabaseHandler): Database handler instance for caching.
+        spotify_token (str): Optional Spotify API token.
+        jwt_apple_music_token (str): Optional Apple Music API token.
+        discogs_client: The Discogs client instance.
+    
     Returns:
         dict: A dictionary of the item's information.
-
     """
     release = item.release
     release_id = release.id
     artist_info = None  # Initialize artist_info as None
     apple_music_data = None  # Initialize apple_music_data as None
 
-    if str(release_id) not in cache:
+    # Check if we already have this release in cache
+    cached_data = db_handler.get_release(release_id)
+    if cached_data:
+        return cached_data
+
+    try:
         artist_name = release.artists[0].name
         album_title = release.title
         artist_id = release.artists[0].id
-        date_added = item.date_added.isoformat() if item.date_added else None
+        date_added = item.data['date_added'] if 'date_added' in item.data else None
         genre = release.genres
         style = release.styles
         label = release.labels[0].name if release.labels else None
-        catalog_number = release.labels[0].catno if release.labels else None
+        catalog_number = item.data['basic_information']['labels'][0]['catno'] if item.data['basic_information']['labels'] else None
 
         # Get release formats
         release_formats = [
@@ -661,7 +722,7 @@ def process_item(item, cache):
 
         release_date = release.year
         country = release.country
-        rating = release.community.rating.average
+        rating = item.data.get('rating', 0)  # Default to 0 if not present
 
         # Get track list
         track_list = [{'number': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist]
@@ -682,13 +743,13 @@ def process_item(item, cache):
         slug = sanitize_slug(f"{album_title}-{release_id}")
 
         # Get Spotify ID
-        spotify_id = get_spotify_id(artist_name, album_title)
+        spotify_id = get_spotify_id(artist_name, album_title, spotify_token)
 
         # Get Wikipedia data
         wikipedia_summary, wikipedia_url = get_wikipedia_data(f"{escape_quotes(artist_name)} {album_title} (album)", album_title)
 
         # Create dictionary of item information
-        cache[str(release_id)] = {
+        item_data = {
             "Release ID": release_id,
             "Artist Name": artist_name,
             "Album Title": album_title,
@@ -721,245 +782,165 @@ def process_item(item, cache):
             apple_music_data = get_apple_music_data('albums', f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', jwt_apple_music_token)
             if apple_music_data:
                 for key, value in apple_music_data.items():
-                    cache[str(release_id)][f"Apple Music {key}"] = value
+                    item_data[f"Apple Music {key}"] = value
 
         # Get artist information
         if apple_music_data:
-            discogs_artist_info = get_artist_info(artist_id)
-            apple_music_artist_info = get_apple_music_data('artists', escape_quotes(artist_name), jwt_apple_music_token)
-            if discogs_artist_info is not None and apple_music_artist_info is not None:
-                artist_info = {**discogs_artist_info, **apple_music_artist_info}  # Merge Discogs and Apple Music artist info
-            elif discogs_artist_info is not None:
-                artist_info = discogs_artist_info
-            elif apple_music_artist_info is not None:
-                artist_info = apple_music_artist_info
-            else:
-                artist_info = None
+            # If we have Apple Music data, use it to get artist info
+            artist_info = {
+                'id': artist_id,
+                'name': artist_name,
+                'profile': apple_music_data.get('artistBio', ''),
+                'url': '',
+                'aliases': [],
+                'members': [],
+                'images': [],
+                'slug': sanitize_slug(artist_name)
+            }
         else:
-            artist_info = get_artist_info(artist_id)
+            # Otherwise get artist info from Discogs
+            artist_info = get_artist_info(artist_name, discogs_client)
+        item_data["Artist Info"] = artist_info
 
+        # Save to cache before returning
+        db_handler.save_release(release_id, item_data)
+        return item_data
+        
+    except Exception as e:
+        logging.error(f"Error processing item {release_id}: {str(e)}")
+        db_handler.add_skip_release(release_id)
+        return None
 
-        cache[str(release_id)]["Artist Info"] = artist_info
-
-        return cache[str(release_id)]
-
-# Function to load the last processed index
 def load_last_processed_index():
     """
-    Load the last processed index from a file.
-
-    This function attempts to open a file containing the last processed index and return it.
-    If the file is not found, it will return 0. If any other exceptions occur, they are logged and 0 is returned.
-
+    Load the last processed index from the database.
+    
     Returns:
-        int: The last processed index, or 0 if an error occurred.
+        int: The last processed index, or 0 if not found.
     """
-    try:
-        with open(LAST_PROCESSED_INDEX_FILE, 'r') as f:
-            return int(f.read())
-    except FileNotFoundError:
-        return 0
-    except Exception as e:
-        logging.error(f"Error occurred while loading last processed index: {str(e)}")
-        return 0
+    db = DatabaseHandler(DB_PATH)
+    return db.get_last_processed_index()
 
 def load_skip_releases():
     """
-    Load release IDs to skip from a file.
-
+    Load release IDs to skip from the database.
+    
     Returns:
         set: A set of release IDs to skip.
     """
-    skip_releases = set()
-    try:
-        with open(SKIP_RELEASE_FILE, 'r') as f:
-            for line in f:
-                skip_releases.add(line.strip())
-        logging.info(f"Loaded {len(skip_releases)} release IDs to skip.")
-    except FileNotFoundError:
-        logging.warning(f"{SKIP_RELEASE_FILE} not found. No releases will be skipped.")
-    return skip_releases
+    db = DatabaseHandler(DB_PATH)
+    return db.get_skip_releases()
 
-####################################################################################################
-# Main script
-####################################################################################################
+def main():
+    # Initialize the database handler
+    db_handler = DatabaseHandler(DB_PATH)
+    
+    # Create logs folder if it doesn't exist
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
 
-# Create logs folder if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
+    skip_releases = load_skip_releases()
 
-skip_releases = load_skip_releases()
+    # Get the current date and time to append to the log file's name
+    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-# Get the current date and time to append to the log file's name
-current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Configure logging
+    logging.basicConfig(
+        filename=f'logs/app_{current_time}.log',
+        filemode='w',
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
 
-# Configure logging with the log file's name, format, and log level
-logging.basicConfig(
-    filename=f'logs/app_{current_time}.log',
-    filemode='w',
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+    # Load access token and username from secrets.json
+    with open('secrets.json', 'r') as f:
+        secrets = json.load(f)
 
-# Load access token and username from secrets.json
-with open('secrets.json', 'r') as f:
-    secrets = json.load(f)
+    # Store API credentials from secrets.json
+    discogs_access_token = secrets['discogs_access_token']
+    discogs_username = secrets['discogs_username']
+    spotify_client_id = secrets['spotify_client_id']
+    spotify_client_secret = secrets['spotify_client_secret']
+    apple_music_client_id = secrets['apple_music_client_id']
+    apple_developer_team_id = secrets['apple_developer_team_id']
 
-# Store Discogs and Spotify API credentials from secrets.json
-discogs_access_token = secrets['discogs_access_token']
-discogs_username = secrets['discogs_username']
-spotify_client_id = secrets['spotify_client_id']
-spotify_client_secret = secrets['spotify_client_secret']
-apple_music_client_id = secrets['apple_music_client_id']
-apple_developer_team_id = secrets['apple_developer_team_id']
+    # Initialize Discogs client
+    discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
 
-# Initialize Discogs client with the user token
-discogs = discogs_client.Client('DiscogsCollectionScript/1.0', user_token=discogs_access_token)
+    # Retrieve user information and collection
+    user = discogs.identity()
+    collection = discogs.user(discogs_username).collection_folders[0].releases
 
-# Retrieve user information and collection from Discogs
-user = discogs.identity()
-collection = discogs.user(discogs_username).collection_folders[0].releases
-
-# Check if the --all flag is passed to process all items in the collection
-process_all = '--all' in sys.argv
-
-# Check if the --delay flag is passed and set the delay between requests accordingly
-delay_override = next((arg for arg in sys.argv if arg.startswith('--delay=')), None)
-if delay_override:
-    try:
-        delay_value = float(delay_override.split('=')[1])
-        if delay_value < 0:
-            raise ValueError("Delay value must be non-negative")
-        DELAY = delay_value
-    except ValueError as e:
-        logging.error(f"Invalid value for --delay flag. Using default value ({DEFAULT_DELAY}). Error: {e}")
+    # Process command line arguments
+    process_all = '--all' in sys.argv
+    
+    delay_override = next((arg for arg in sys.argv if arg.startswith('--delay=')), None)
+    if delay_override:
+        try:
+            delay_value = float(delay_override.split('=')[1])
+            if delay_value < 0:
+                raise ValueError("Delay value must be non-negative")
+            DELAY = delay_value
+        except ValueError as e:
+            logging.error(f"Invalid value for --delay flag. Using default value ({DEFAULT_DELAY}). Error: {e}")
+            DELAY = DEFAULT_DELAY
+    else:
         DELAY = DEFAULT_DELAY
-else:
-    DELAY = DEFAULT_DELAY
 
-# Check if the --num-items flag is passed and set the number of items to process accordingly
-num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
-if num_items_override:
-    try:
-        num_items = int(num_items_override.split('=')[1])
-    except ValueError:
-        logging.error("Invalid value for --num-items flag. Using default value (10).")
+    num_items_override = next((arg for arg in sys.argv if arg.startswith('--num-items=')), None)
+    if num_items_override:
+        try:
+            num_items = int(num_items_override.split('=')[1])
+        except ValueError:
+            logging.error("Invalid value for --num-items flag. Using default value (10).")
+            num_items = 10
+    else:
         num_items = 10
-else:
-    num_items = 10
 
-# Determine the number of items to process based on the flags
-num_items = len(collection) if process_all else num_items
+    # Determine number of items to process
+    num_items = len(collection) if process_all else num_items
 
-collection_cache = {}
-override_cache = {}
+    # Initialize processed artists set and get last index
+    processed_artists = set()
+    last_processed_index = load_last_processed_index()
 
-# Check if both cache files exist
-if not os.path.exists(CACHE_FILE):
-    raise FileNotFoundError(f"{CACHE_FILE} not found.")
-if not os.path.exists(OVERRIDE_CACHE_FILE):
-    raise FileNotFoundError(f"{OVERRIDE_CACHE_FILE} not found.")
+    # Get Spotify token
+    spotify_token = get_spotify_token(spotify_client_id, spotify_client_secret)
 
-# Load the cache files
-with open(CACHE_FILE, 'r') as f:
-    for line in f:
-        try:
-            data = json.loads(line)
-            if isinstance(data, dict) and len(data) == 1:
-                collection_cache.update(data)
-            else:
-                logging.warning(f"Skipping invalid data in {CACHE_FILE}: {line.strip()}")
-        except json.decoder.JSONDecodeError as e:
-            logging.error(f"Error parsing JSON in {CACHE_FILE}: {e}")
-            # Skip the problematic line and continue with the next line
+    # Generate the Apple Music token
+    jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
 
-with open(OVERRIDE_CACHE_FILE, 'r') as f:
-    for line in f:
-        try:
-            data = json.loads(line)
-            if isinstance(data, dict) and len(data) == 1:
-                override_cache.update(data)
-            else:
-                logging.warning(f"Skipping invalid data in {OVERRIDE_CACHE_FILE}: {line.strip()}")
-        except json.decoder.JSONDecodeError as e:
-            logging.error(f"Error parsing JSON in {OVERRIDE_CACHE_FILE}: {e}")
-            # Skip the problematic line and continue with the next line
-
-# Initialize a set for processed artists
-processed_artists = set()
-last_processed_index = load_last_processed_index()  # Load from file or initialize to 0
-
-# Generate the Apple Music token
-jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
-
-# Iterate through the collection, update the cache, and create the markdown file
-with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
-    # Update the progress bar to reflect already processed items
-    progress_bar.update(last_processed_index)
-    with open(CACHE_FILE, 'a') as cache_file:
+    # Iterate through the collection, update the cache, and create the markdown file
+    with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
+        # Update the progress bar to reflect already processed items
+        progress_bar.update(last_processed_index)
+        
         for i, item in enumerate(collection):
             if i < last_processed_index:
-                # Skip the already processed items
                 continue
-
-            if i >= num_items:
-                break
-
-            # Process the current item
-            release_id = str(item.release.id)
-            
-            # Check if the release should be skipped
-            if release_id in skip_releases:
-                logging.info(f"Skipping release ID {release_id} as it's in the skip list.")
+                
+            try:
+                item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
+                if item_data:
+                    create_markdown_file(item_data)
+                    
+                # Save progress
+                db_handler.save_last_processed_index(i + 1)
                 progress_bar.update(1)
+                
+            except Exception as e:
+                logging.error(f"Error processing item at index {i}: {str(e)}")
+                db_handler.add_skip_release(item.release.id)
                 continue
-
-            if release_id in override_cache:
-                # Retrieve the release data from the override cache
-                release_data = override_cache[release_id]
-                artist_info = release_data["Artist Info"]
-                logging.info(f'Using override cache for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-            elif release_id in collection_cache:
-                # If not in override cache, check the normal cache
-                release_data = collection_cache[release_id]
-                artist_info = release_data["Artist Info"]
-                logging.info(f'Using cached information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-            else:
-                # Fetch the release data and update the cache
-                process_item(item, collection_cache)
-                release_data = collection_cache[release_id]
-                artist_info = release_data["Artist Info"]
-                logging.info(f'Fetching information for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-
-                # Write the current item to the cache file
-                cache_file.write(json.dumps({release_id: release_data}) + '\n')
-
-                # Log the action of writing to the cache
-                logging.info(f'Writing information to cache for: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-
-
-            # Update the progress bar with current item information
-            progress_bar.set_description(f'Currently Processing: {release_data["Album Title"]} by {release_data["Artist Name"]} ({release_id})')
-            progress_bar.update(1)
-
-            # Create the release markdown file
-            create_markdown_file(release_data)
-
-            # Process the artist and create the artist markdown file if not processed before
-            process_artist(artist_info, processed_artists)
-
-            # Update the last processed index
-            last_processed_index = i + 1
-
+            
             # Add a delay between requests to avoid hitting the rate limit
             if DELAY > 0:
                 time.sleep(DELAY)
 
-            # Save the last processed index to the file
-            with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
-                f.write(str(last_processed_index))
+    # Delete the last processed index file after successful completion
+    if os.path.exists(LAST_PROCESSED_INDEX_FILE):
+        os.remove(LAST_PROCESSED_INDEX_FILE)
+        logging.info("Deleted the last processed index file.")
 
-# Delete the last processed index file after successful completion
-if os.path.exists(LAST_PROCESSED_INDEX_FILE):
-    os.remove(LAST_PROCESSED_INDEX_FILE)
-    logging.info("Deleted the last processed index file.")
+if __name__ == "__main__":
+    main()
