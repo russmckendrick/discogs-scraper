@@ -2,27 +2,28 @@
 # Import required libraries and modules
 ####################################################################################################
 
-import sys
-import json
 import os
-import re
-import requests
-import discogs_client
+import json
 import time
 import logging
+import argparse
+from datetime import datetime, timedelta
+from pathlib import Path
+import requests
+import wikipedia
+import discogs_client
+from discogs_client import Client
+import sys
 import base64
 import random
 import jwt
-import wikipedia
 from difflib import SequenceMatcher
-from pathlib import Path
 from urllib.request import urlretrieve
 from tqdm import tqdm
-from datetime import datetime, timedelta
 from tenacity import retry, wait_fixed
 from jinja2 import Environment, FileSystemLoader
 from db_handler import DatabaseHandler
-import argparse
+import re
 
 ####################################################################################################
 # Variables
@@ -32,7 +33,9 @@ DB_PATH = 'collection_cache.db' # Database path for caching
 OUTPUT_DIRECTORY = 'website/content/albums' # Directory to store the output files
 ARTIST_DIRECTORY = "website/content/artist" # Directory to store artist information
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private key file
-DEFAULT_DELAY = 2 # Set delay between requests
+DEFAULT_DELAY = 10 # Set delay between requests
+COLLECTION_PAGE_SIZE = 100 # Collection page size
+COLLECTION_PAGE_DELAY = 2 # Collection page request delay in seconds
 APPLE_MUSIC_STOREFRONT = "gb" # Storefront for Apple Music
 SKIP_RELEASE_FILE = 'skip_releases.txt' # File to store skipped releases
 LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt" # File to store the last processed index
@@ -770,18 +773,50 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
 
         slug = sanitize_slug(f"{album_title}-{release_id}")
 
-        # Get Spotify ID
-        spotify_id = get_spotify_id(artist_name, album_title, spotify_token)
+        # Only make API calls if we don't have cached data
+        spotify_id = None
+        wikipedia_summary = None
+        wikipedia_url = None
+        apple_music_data = None
+
+        # Get Spotify ID if token is provided
+        if spotify_token:
+            spotify_id = get_spotify_id(artist_name, album_title, spotify_token)
 
         # Get Wikipedia data
         wikipedia_summary, wikipedia_url = get_wikipedia_data(f"{escape_quotes(artist_name)} {album_title} (album)", album_title)
+
+        # Get Apple Music ID and other data
+        if "various" not in artist_name.lower():
+            apple_music_data = get_apple_music_data('albums', f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', jwt_apple_music_token)
+            if apple_music_data:
+                for key, value in apple_music_data.items():
+                    apple_music_data[key] = value
+
+        # Get artist information
+        if apple_music_data:
+            # If we have Apple Music data, use it to get artist info
+            artist_info = {
+                'id': artist_id,
+                'name': artist_name,
+                'profile': apple_music_data.get('artistBio', ''),
+                'url': '',
+                'aliases': [],
+                'members': [],
+                'images': [],
+                'slug': sanitize_slug(artist_name)
+            }
+        else:
+            # Otherwise get artist info from Discogs
+            artist_info = get_artist_info(artist_name, discogs_client)
+        artist_info["artist_wikipedia_summary"] = wikipedia_summary
+        artist_info["artist_wikipedia_url"] = wikipedia_url
 
         # Create dictionary of item information
         item_data = {
             "Release ID": release_id,
             "Artist Name": artist_name,
             "Album Title": album_title,
-            "Slug": slug,
             "Slug": slug,
             "Date Added": date_added,
             "Genre": genre,
@@ -804,31 +839,6 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
             "Wikipedia Summary": wikipedia_summary,
             "Wikipedia URL": wikipedia_url
         }
-
-        # Get Apple Music ID and other data
-        if "various" not in artist_name.lower():
-            apple_music_data = get_apple_music_data('albums', f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', jwt_apple_music_token)
-            if apple_music_data:
-                for key, value in apple_music_data.items():
-                    item_data[f"Apple Music {key}"] = value
-
-        # Get artist information
-        if apple_music_data:
-            # If we have Apple Music data, use it to get artist info
-            artist_info = {
-                'id': artist_id,
-                'name': artist_name,
-                'profile': apple_music_data.get('artistBio', ''),
-                'url': '',
-                'aliases': [],
-                'members': [],
-                'images': [],
-                'slug': sanitize_slug(artist_name)
-            }
-        else:
-            # Otherwise get artist info from Discogs
-            artist_info = get_artist_info(artist_name, discogs_client)
-        item_data["Artist Info"] = artist_info
 
         # Save to cache before returning
         db_handler.save_release(release_id, item_data)
@@ -896,30 +906,49 @@ def main():
     apple_music_client_id = secrets['apple_music_client_id']
     apple_developer_team_id = secrets['apple_developer_team_id']
 
+    # Get tokens for APIs
+    spotify_token = get_spotify_token(spotify_client_id, spotify_client_secret)
+    jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
+
     # Initialize Discogs client and get collection
-    while True:
+    discogs_client = Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
+    
+    # Monkey patch the _get method to add logging
+    original_get = discogs_client._get
+    def logged_get(url):
+        logging.info(f"Making Discogs API request to: {url}")
         try:
-            discogs = discogs_client.Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
-            me = discogs.identity()
-            collection = me.collection_folders[0].releases
-            num_items = len(collection)
-            logging.info(f"Found {num_items} items in collection")
-            break  # Exit loop if successful
-        except discogs_client.exceptions.HTTPError as http_err:
-            if http_err.status_code == 429:
-                logging.warning("Rate limit exceeded while fetching collection. Waiting for 60 seconds before retrying...")
-                time.sleep(60)
-            else:
-                raise  # Re-raise if it's not a 429 error
+            time.sleep(DELAY)  # Add delay before each request
+            return original_get(url)
+        except Exception as e:
+            logging.error(f"Error making request to {url}: {str(e)}")
+            raise
+    discogs_client._get = logged_get
+
+    try:
+        # Get user's collection
+        me = discogs_client.identity()
+        
+        # Monkey patch the collection pagination to use our page size
+        collection = me.collection_folders[0].releases
+        collection.per_page = COLLECTION_PAGE_SIZE
+        
+        # Get total number of items
+        first_page = collection.page(1)
+        num_items = len(collection)
+        logging.info(f"Found {num_items} items in collection")
+        
+        # Add delay after getting first page
+        time.sleep(COLLECTION_PAGE_DELAY)
+        
+    except discogs_client.exceptions.HTTPError as http_err:
+        if http_err.status_code == 429:
+            retry_after = int(http_err.headers.get('Retry-After', DELAY))
+            logging.error(f"Rate limit hit when getting collection. Retry after {retry_after} seconds")
+        raise
 
     # Initialize processed artists set
     processed_artists = set()
-
-    # Get Spotify token
-    spotify_token = get_spotify_token(spotify_client_id, spotify_client_secret)
-
-    # Generate the Apple Music token
-    jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
 
     # Load last processed index
     last_processed_index = 0
@@ -938,6 +967,11 @@ def main():
                 logging.debug(f"Skipping index {index}, already processed.")
                 progress_bar.update(1)
                 continue
+
+            if index % COLLECTION_PAGE_SIZE == 0 and index > 0:
+                logging.info(f"Waiting {COLLECTION_PAGE_DELAY} seconds before fetching next page...")
+                time.sleep(COLLECTION_PAGE_DELAY)
+
             try:
                 # Skip if in skip_releases (compare as integers)
                 if item.release.id in skip_releases:
@@ -961,7 +995,7 @@ def main():
                         try:
                             # Log API request
                             logging.info(f"Fetching data for release {item.release.id} from Discogs API")
-                            item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
+                            item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs_client)
                             break  # Exit loop if successful
                         except discogs_client.exceptions.HTTPError as http_err:
                             if http_err.status_code == 429:
