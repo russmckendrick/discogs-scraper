@@ -912,9 +912,18 @@ def main():
     # Generate the Apple Music token
     jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
 
+    # Load last processed index
+    last_processed_index = 0
+    if os.path.exists(LAST_PROCESSED_INDEX_FILE):
+        with open(LAST_PROCESSED_INDEX_FILE, 'r') as f:
+            last_processed_index = int(f.read().strip() or 0)
+
+    # Skip processed items
+    collection = collection[last_processed_index:]
+
     # Process all items in the collection
     with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
-        for item in collection:
+        for index, item in enumerate(collection, start=last_processed_index):
             try:
                 # Skip if in skip_releases (compare as integers)
                 if item.release.id in skip_releases:
@@ -941,6 +950,10 @@ def main():
                 # Create markdown file if we have data
                 if item_data:
                     create_markdown_file(item_data)
+                
+                # Update last processed index
+                with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
+                    f.write(str(index))
                 
                 progress_bar.update(1)
 
