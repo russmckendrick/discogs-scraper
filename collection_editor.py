@@ -213,36 +213,14 @@ if release_id:
             # Streaming Tab
             with tabs[7]:
                 st.write("Apple Music Information:")
-                edited_data['Apple Music ID'] = st.text_input(
-                    "Apple Music ID",
-                    value=release_data.get('Apple Music id', '')
-                )
-                edited_data['Apple Music Type'] = st.text_input(
-                    "Type",
-                    value=release_data.get('Apple Music type', '')
-                )
-                edited_data['Apple Music URL'] = st.text_input(
-                    "URL",
-                    value=release_data.get('Apple Music attributes', {}).get('url', '')
-                )
-                edited_data['Apple Music Release Date'] = st.date_input(
-                    "Release Date",
-                    value=pd.to_datetime(release_data.get('Apple Music attributes', {}).get('releaseDate', ''))
-                )
-                edited_data['Apple Music Record Label'] = st.text_input(
-                    "Record Label",
-                    value=release_data.get('Apple Music attributes', {}).get('recordLabel', '')
-                )
-                edited_data['Apple Music Genre Names'] = st.text_area(
-                    "Genre Names",
-                    value=", ".join(release_data.get('Apple Music attributes', {}).get('genreNames', [])),
-                    height=100
-                )
+                edited_data['Apple Music ID'] = st.text_input("Apple Music ID", value=release_data.get('Apple Music id', ''))
+                edited_data['Apple Music Type'] = st.text_input("Type", value=release_data.get('Apple Music type', ''))
+                edited_data['Apple Music URL'] = st.text_input("URL", value=release_data.get('Apple Music attributes', {}).get('url', ''))
+                edited_data['Apple Music Release Date'] = st.date_input("Release Date", value=pd.to_datetime(release_data.get('Apple Music attributes', {}).get('releaseDate', '')))
+                edited_data['Apple Music Record Label'] = st.text_input("Record Label", value=release_data.get('Apple Music attributes', {}).get('recordLabel', ''))
+                edited_data['Apple Music Genre Names'] = st.text_area("Genre Names", value=", ".join(release_data.get('Apple Music attributes', {}).get('genreNames', [])), height=100)
                 st.write("Apple Music Artwork:")
-                edited_data['Apple Music Artwork URL'] = st.text_input(
-                    "Artwork URL",
-                    value=release_data.get('Apple Music attributes', {}).get('artwork', {}).get('url', '').replace('{w}x{h}', '1425x1425')
-                )
+                edited_data['Apple Music Artwork URL'] = st.text_input("Artwork URL", value=release_data.get('Apple Music attributes', {}).get('artwork', {}).get('url', '').replace('{w}x{h}', '1425x1425'))
                 st.write("Artwork Dimensions:")
                 st.text(f"Width: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('width', '')}")
                 st.text(f"Height: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('height', '')}")
@@ -252,6 +230,12 @@ if release_id:
                 st.text(f"Text Color 2: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor2', '')}")
                 st.text(f"Text Color 3: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor3', '')}")
                 st.text(f"Text Color 4: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor4', '')}")
+                # Additional Apple Music attributes
+                edited_data['Apple Music Attributes URL'] = st.text_input("Apple Music Attributes URL", value=release_data.get('Apple Music attributes', {}).get('url', ''))
+                edited_data['Apple Music Attributes Artwork URL'] = st.text_input(
+                    "Apple Music Attributes Artwork URL",
+                    value=release_data.get('Apple Music attributes', {}).get('artwork', {}).get('url', '')
+                )
                 st.write("Spotify Info:")
                 edited_data['Spotify ID'] = st.text_input("Spotify ID", value=release_data.get('Spotify ID', ''))
 
