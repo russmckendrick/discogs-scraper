@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # Initialize database handler with backup database
-db = DatabaseHandler(db_path='collection_cache_backup.db')
+db = DatabaseHandler(db_path='collection_cache.db')
 
 def update_release(release_id, data):
     """Update release data in the database"""
