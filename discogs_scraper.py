@@ -34,8 +34,8 @@ ARTIST_DIRECTORY = "website/content/artist" # Directory to store artist informat
 APPLE_KEY_FILE_PATH = 'backups/apple_private_key.p8' # Path to the apple private key file
 DEFAULT_DELAY = 2 # Set delay between requests
 APPLE_MUSIC_STOREFRONT = "gb" # Storefront for Apple Music
-SKIP_RELEASE_FILE = 'skip_releases.txt'
-LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt"
+SKIP_RELEASE_FILE = 'skip_releases.txt' # File to store skipped releases
+LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt" # File to store the last processed index
 
 ####################################################################################################
 # Functions
@@ -867,7 +867,12 @@ def main():
     args = parser.parse_args()
 
     # Set up logging
-    logging.basicConfig(level=logging.INFO)
+    log_directory = "logs"
+    os.makedirs(log_directory, exist_ok=True)
+    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = os.path.join(log_directory, f"log_{current_time}.log")
+    logging.basicConfig(level=logging.INFO, filename=log_filename, filemode='w',
+                        format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Set the delay for requests
     global DELAY
