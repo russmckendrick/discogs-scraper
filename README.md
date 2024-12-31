@@ -18,6 +18,37 @@ To customize the scraper for your needs, create a copy of the `secrets.json.exam
 
 The scraper fetches data from the Discogs API and processes the information to generate markdown files and download images. This data can then be used to create a static site showcasing your music collection 🎧.
 
+## New Features ✨
+
+- **Discogs Scraper Enhancements:**
+  - Integration with Apple Music and Spotify APIs for richer music data. 🎵
+  - Wikipedia data retrieval for artist information. 📚
+  - Automatic generation of markdown files for albums and artists. 📄
+
+## Collection Editor 🛠️
+
+The `collection_editor.py` script allows you to manage and edit your music collection data stored in the database. Perfect for maintaining an up-to-date record of your music library. 🎶
+
+## Running the Collection Editor 🖥️
+
+To run the `collection_editor.py` script, follow these steps:
+
+1. **Ensure Dependencies are Installed:**
+   - Install the required packages using the `requirements.txt` file.
+
+2. **Run the Streamlit App:**
+   - Execute the following command to start the app:
+     ```bash
+     streamlit run collection_editor.py
+     ```
+
+3. **Access the Application:**
+   - Open your web browser and navigate to the URL provided by Streamlit, typically `http://localhost:8501`.
+
+4. **Using the Application:**
+   - Enter a Release ID in the search box to fetch and edit release data.
+   - Make changes and click "Save Changes" to update the database.
+
 ## Running the Scraper 🏃‍♂️
 
 The scraper can be run using the following commands:
