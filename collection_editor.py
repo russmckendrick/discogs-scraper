@@ -59,61 +59,51 @@ if release_id:
             
             # Basic Info Tab
             with tabs[0]:
-                col1, col2 = st.columns([2, 1])
+                st.write("Basic Information:")
+                artwork_url = release_data.get('Apple Music attributes', {}).get('artwork', {}).get('url', '').replace('{w}x{h}', '1425x1425')
+                if not artwork_url:
+                    artwork_url = release_data.get('Album Cover URL', '')
+                st.image(artwork_url, width=300)
+                edited_data['Artist Name'] = st.text_input(
+                    "Artist Name",
+                    value=release_data.get('Artist Name', '')
+                )
+                edited_data['Album Title'] = st.text_input(
+                    "Album Title",
+                    value=release_data.get('Album Title', '')
+                )
+                edited_data['Release Date'] = st.number_input(
+                    "Year",
+                    value=int(release_data.get('Release Date', 2000)),
+                    min_value=1900,
+                    max_value=2100,
+                    key="year"
+                )
                 
-                with col1:
-                    # Title and Artist
-                    edited_data['Album Title'] = st.text_input(
-                        "Title", 
-                        value=release_data.get('Album Title', ''),
-                        key="title"
-                    )
-                    
-                    edited_data['Artist Name'] = st.text_input(
-                        "Artist", 
-                        value=release_data.get('Artist Name', ''),
-                        key="artist"
-                    )
-                    
-                    edited_data['Release Date'] = st.number_input(
-                        "Year",
-                        value=int(release_data.get('Release Date', 2000)),
-                        min_value=1900,
-                        max_value=2100,
-                        key="year"
-                    )
-                    
-                    # Genres
-                    genres = release_data.get('Genre', [])
-                    genres_str = ', '.join(genres) if genres else ''
-                    new_genres = st.text_input("Genres (comma-separated)", value=genres_str)
-                    edited_data['Genre'] = [g.strip() for g in new_genres.split(',') if g.strip()]
-                    
-                    # Styles
-                    styles = release_data.get('Style', [])
-                    styles_str = ', '.join(styles) if styles else ''
-                    new_styles = st.text_input("Styles (comma-separated)", value=styles_str)
-                    edited_data['Style'] = [s.strip() for s in new_styles.split(',') if s.strip()]
-                    
-                    # Label and Catalog Number
-                    edited_data['Label'] = st.text_input(
-                        "Label",
-                        value=release_data.get('Label', ''),
-                        key="label"
-                    )
-                    
-                    edited_data['Catalog Number'] = st.text_input(
-                        "Catalog Number",
-                        value=release_data.get('Catalog Number', ''),
-                        key="catalog_number"
-                    )
+                # Genres
+                genres = release_data.get('Genre', [])
+                genres_str = ', '.join(genres) if genres else ''
+                new_genres = st.text_input("Genres (comma-separated)", value=genres_str)
+                edited_data['Genre'] = [g.strip() for g in new_genres.split(',') if g.strip()]
                 
-                with col2:
-                    # Display cover image if available
-                    cover_url = release_data.get('Album Cover URL')
-                    if cover_url:
-                        st.image(cover_url, width=200)
-                        edited_data['Album Cover URL'] = cover_url
+                # Styles
+                styles = release_data.get('Style', [])
+                styles_str = ', '.join(styles) if styles else ''
+                new_styles = st.text_input("Styles (comma-separated)", value=styles_str)
+                edited_data['Style'] = [s.strip() for s in new_styles.split(',') if s.strip()]
+                
+                # Label and Catalog Number
+                edited_data['Label'] = st.text_input(
+                    "Label",
+                    value=release_data.get('Label', ''),
+                    key="label"
+                )
+                
+                edited_data['Catalog Number'] = st.text_input(
+                    "Catalog Number",
+                    value=release_data.get('Catalog Number', ''),
+                    key="catalog_number"
+                )
             
             # Track List Tab
             with tabs[1]:
@@ -248,6 +238,20 @@ if release_id:
                     value=", ".join(release_data.get('Apple Music attributes', {}).get('genreNames', [])),
                     height=100
                 )
+                st.write("Apple Music Artwork:")
+                edited_data['Apple Music Artwork URL'] = st.text_input(
+                    "Artwork URL",
+                    value=release_data.get('Apple Music attributes', {}).get('artwork', {}).get('url', '').replace('{w}x{h}', '1425x1425')
+                )
+                st.write("Artwork Dimensions:")
+                st.text(f"Width: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('width', '')}")
+                st.text(f"Height: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('height', '')}")
+                st.write("Artwork Colors:")
+                st.text(f"Background Color: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('bgColor', '')}")
+                st.text(f"Text Color 1: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor1', '')}")
+                st.text(f"Text Color 2: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor2', '')}")
+                st.text(f"Text Color 3: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor3', '')}")
+                st.text(f"Text Color 4: {release_data.get('Apple Music attributes', {}).get('artwork', {}).get('textColor4', '')}")
                 st.write("Spotify Info:")
                 edited_data['Spotify ID'] = st.text_input("Spotify ID", value=release_data.get('Spotify ID', ''))
 
@@ -282,10 +286,24 @@ if release_id:
             with tabs[10]:
                 st.write("Advanced Information:")
                 st.json(release_data, expanded=False)
+                
+                # Add a text area for editing JSON data
+                json_data = st.text_area("Edit Release Information", json.dumps(release_data, indent=4), height=400)
+
+                # Update the release data if changes are made
+                try:
+                    updated_data = json.loads(json_data)
+                    if updated_data != release_data:
+                        db.save_release(release_id, updated_data)
+                        st.success("Release information updated successfully.")
+                except json.JSONDecodeError:
+                    st.error("Invalid JSON format. Please correct it and try again.")
             
             # Save Changes button (outside tabs)
             if st.button("Save Changes"):
                 try:
+                    # Convert date to string for JSON serialization
+                    edited_data['Apple Music Release Date'] = edited_data['Apple Music Release Date'].strftime('%Y-%m-%d')
                     update_release(release_id, edited_data)
                     st.rerun()
                 except Exception as e:
