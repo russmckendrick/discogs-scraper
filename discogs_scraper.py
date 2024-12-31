@@ -917,13 +917,18 @@ def main():
     if os.path.exists(LAST_PROCESSED_INDEX_FILE):
         with open(LAST_PROCESSED_INDEX_FILE, 'r') as f:
             last_processed_index = int(f.read().strip() or 0)
+    logging.info(f"Starting processing from index: {last_processed_index}")
 
-    # Skip processed items
-    collection = collection[last_processed_index:]
+    # Adjust total items for progress bar to reflect remaining items
+    total_items_to_process = num_items - last_processed_index
 
     # Process all items in the collection
-    with tqdm(total=num_items, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
-        for index, item in enumerate(collection, start=last_processed_index):
+    with tqdm(total=total_items_to_process, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
+        for index, item in enumerate(collection):
+            if index < last_processed_index:
+                logging.debug(f"Skipping index {index}, already processed.")
+                progress_bar.update(1)
+                continue
             try:
                 # Skip if in skip_releases (compare as integers)
                 if item.release.id in skip_releases:
@@ -931,16 +936,19 @@ def main():
                     progress_bar.update(1)
                     continue
 
+                # Log cache check
+                logging.debug(f"Checking cache for release {item.release.id}")
+
                 # For non-skipped items, check cache first
                 cached_data = db_handler.get_release(item.release.id)
                 
-                if cached_data and not args.all:
-                    # Use cached data if it exists and --all is not set
+                if cached_data:
+                    # Use cached data if it exists
                     item_data = cached_data
                     logging.debug(f"Using cached data for release {item.release.id}")
                 else:
-                    # Fetch from Discogs API if not in cache or --all is set
-                    logging.debug(f"Fetching data for release {item.release.id} from Discogs API")
+                    # Log API request
+                    logging.info(f"Fetching data for release {item.release.id} from Discogs API")
                     item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
                     
                     # Add delay between API requests
@@ -961,6 +969,11 @@ def main():
                 logging.error(f"Error processing release {item.release.id}: {str(e)}")
                 progress_bar.update(1)
                 continue
+
+    # Zero out the last processed index file upon completion
+    with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
+        f.write('0')
+    logging.info("Reset last processed index to 0 after completion.")
 
     # Print summary of missing images
     if hasattr(download_image, 'missing_images') and download_image.missing_images:
