@@ -897,11 +897,20 @@ def main():
     apple_developer_team_id = secrets['apple_developer_team_id']
 
     # Initialize Discogs client and get collection
-    discogs = discogs_client.Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
-    me = discogs.identity()
-    collection = me.collection_folders[0].releases
-    num_items = len(collection)
-    logging.info(f"Found {num_items} items in collection")
+    while True:
+        try:
+            discogs = discogs_client.Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
+            me = discogs.identity()
+            collection = me.collection_folders[0].releases
+            num_items = len(collection)
+            logging.info(f"Found {num_items} items in collection")
+            break  # Exit loop if successful
+        except discogs_client.exceptions.HTTPError as http_err:
+            if http_err.status_code == 429:
+                logging.warning("Rate limit exceeded while fetching collection. Waiting for 60 seconds before retrying...")
+                time.sleep(60)
+            else:
+                raise  # Re-raise if it's not a 429 error
 
     # Initialize processed artists set
     processed_artists = set()
@@ -947,13 +956,23 @@ def main():
                     item_data = cached_data
                     logging.debug(f"Using cached data for release {item.release.id}")
                 else:
-                    # Log API request
-                    logging.info(f"Fetching data for release {item.release.id} from Discogs API")
-                    item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
-                    
-                    # Add delay between API requests
-                    if DELAY > 0:
-                        time.sleep(DELAY)
+                    # Retry mechanism for handling 429 errors
+                    while True:
+                        try:
+                            # Log API request
+                            logging.info(f"Fetching data for release {item.release.id} from Discogs API")
+                            item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs)
+                            break  # Exit loop if successful
+                        except discogs_client.exceptions.HTTPError as http_err:
+                            if http_err.status_code == 429:
+                                logging.warning("Rate limit exceeded. Waiting for 60 seconds before retrying...")
+                                time.sleep(60)
+                            else:
+                                raise  # Re-raise if it's not a 429 error
+                
+                # Add delay between API requests
+                if DELAY > 0:
+                    time.sleep(DELAY)
 
                 # Create markdown file if we have data
                 if item_data:
