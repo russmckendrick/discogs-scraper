@@ -53,7 +53,12 @@ class DatabaseHandler:
             cursor = conn.cursor()
             cursor.execute('SELECT data FROM releases WHERE release_id = ?', (release_id,))
             result = cursor.fetchone()
-            return json.loads(result[0]) if result else None
+            if result:
+                logging.info(f"Found release {release_id} in database")
+                return json.loads(result[0])
+            else:
+                logging.warning(f"No release found with ID {release_id}")
+                return None
 
     def get_all_releases(self):
         with sqlite3.connect(self.db_path) as conn:
