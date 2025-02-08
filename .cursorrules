@@ -48,3 +48,42 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 
 # Scratchpad
 
+## Apple Music Integration Fix Analysis
+
+Task: Fix Apple Music integration that stopped working after moving to SQLite caching
+
+Findings:
+1. Comparing working version (0f1a396) with current:
+   - Apple Music data structure changed
+   - Artist info handling was mixing Apple Music and Wikipedia data incorrectly
+   - No token verification was in place
+
+Changes Made:
+[X] Added Apple Music token verification
+[X] Fixed data structure for Apple Music attributes
+[X] Improved error handling and logging
+[X] Separated artist info from Apple Music data
+[X] Added proper attribute checks for Apple Music data
+
+Next Steps:
+[ ] Test with a few releases to verify fix
+[ ] Monitor logs for Apple Music API responses
+[ ] Consider adding retry mechanism for failed Apple Music requests
+
+## Lessons Learned
+
+1. API Integration:
+   - Always verify API tokens before starting main processing
+   - Keep API data structures separate (don't mix Apple Music with Wikipedia data)
+   - Add proper error handling and logging for each API call
+
+2. Data Structure:
+   - When caching API responses, maintain consistent data structure
+   - Document the expected data structure for each API integration
+   - Add validation for required fields
+
+3. Debugging:
+   - Added more detailed logging for API calls
+   - Separated concerns between different data sources
+   - Added token verification to catch authentication issues early
+

@@ -703,7 +703,13 @@ def get_artist_info(artist_name, discogs_client):
             return {
                 'name': artist.name,
                 'profile': artist.data.get('profile', ''),
-                'urls': artist.data.get('urls', [])
+                'url': artist.data.get('url', ''),
+                'aliases': artist.data.get('aliases', []),
+                'members': artist.data.get('members', []),
+                'images': artist.data.get('images', []),
+                'slug': artist.data.get('slug', ''),
+                'artist_wikipedia_summary': artist.data.get('artist_wikipedia_summary', ''),
+                'artist_wikipedia_url': artist.data.get('artist_wikipedia_url', '')
             }
     except Exception as e:
         logging.error(f"Error fetching artist information for {artist_name}: {str(e)}")
@@ -712,23 +718,11 @@ def get_artist_info(artist_name, discogs_client):
 def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=None, discogs_client=None):
     """
     Process a single Discogs item and create a dictionary of the item's information.
-    
-    Args:
-        item (discogs_client.models.Item): The Discogs item to be processed.
-        db_handler (DatabaseHandler): Database handler instance for caching.
-        spotify_token (str): Optional Spotify API token.
-        jwt_apple_music_token (str): Optional Apple Music API token.
-        discogs_client: The Discogs client instance.
-    
-    Returns:
-        dict: A dictionary of the item's information.
     """
     release = item.release
     release_id = release.id
-    artist_info = None  # Initialize artist_info as None
-    apple_music_data = None  # Initialize apple_music_data as None
-
-    # Check if we already have this release in cache
+    
+    # Check cache first
     cached_data = db_handler.get_release(release_id)
     if cached_data:
         return cached_data
@@ -773,46 +767,28 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
 
         slug = sanitize_slug(f"{album_title}-{release_id}")
 
-        # Only make API calls if we don't have cached data
-        spotify_id = None
-        wikipedia_summary = None
-        wikipedia_url = None
-        apple_music_data = None
-
-        # Get Spotify ID if token is provided
-        if spotify_token:
-            spotify_id = get_spotify_id(artist_name, album_title, spotify_token)
-
-        # Get Wikipedia data
-        wikipedia_summary, wikipedia_url = get_wikipedia_data(f"{escape_quotes(artist_name)} {album_title} (album)", album_title)
-
-        # Get Apple Music ID and other data
-        if "various" not in artist_name.lower():
-            apple_music_data = get_apple_music_data('albums', f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', jwt_apple_music_token)
-            if apple_music_data:
-                for key, value in apple_music_data.items():
-                    apple_music_data[key] = value
+        # Get Apple Music data with better error handling
+        apple_music_attributes = None
+        if jwt_apple_music_token and "various" not in artist_name.lower():
+            try:
+                apple_music_data = get_apple_music_data('albums', 
+                    f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', 
+                    jwt_apple_music_token)
+                
+                if apple_music_data and 'attributes' in apple_music_data:
+                    apple_music_attributes = apple_music_data['attributes']
+                    logging.info(f"Found Apple Music data for {artist_name} - {album_title}")
+                else:
+                    logging.debug(f"No Apple Music data found for {artist_name} - {album_title}")
+            except Exception as e:
+                logging.error(f"Error fetching Apple Music data: {str(e)}")
 
         # Get artist information
-        if apple_music_data:
-            # If we have Apple Music data, use it to get artist info
-            artist_info = {
-                'id': artist_id,
-                'name': artist_name,
-                'profile': apple_music_data.get('artistBio', ''),
-                'url': '',
-                'aliases': [],
-                'members': [],
-                'images': [],
-                'slug': sanitize_slug(artist_name)
-            }
-        else:
-            # Otherwise get artist info from Discogs
-            artist_info = get_artist_info(artist_name, discogs_client)
-        artist_info["artist_wikipedia_summary"] = wikipedia_summary
-        artist_info["artist_wikipedia_url"] = wikipedia_url
+        artist_info = get_artist_info(artist_name, discogs_client)
+        artist_info["artist_wikipedia_summary"] = apple_music_attributes['artistBio'] if apple_music_attributes and 'artistBio' in apple_music_attributes else None
+        artist_info["artist_wikipedia_url"] = apple_music_attributes['artistWikipediaUrl'] if apple_music_attributes and 'artistWikipediaUrl' in apple_music_attributes else None
 
-        # Create dictionary of item information
+        # Create item data dictionary with Apple Music attributes
         item_data = {
             "Release ID": release_id,
             "Artist Name": artist_name,
@@ -834,16 +810,17 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
             "Release URL": release_url,
             "Notes": notes,
             "Credits": credits,
-            "Spotify ID": spotify_id,
+            "Spotify ID": get_spotify_id(artist_name, album_title, spotify_token),
             "Artist Info": artist_info,
-            "Wikipedia Summary": wikipedia_summary,
-            "Wikipedia URL": wikipedia_url
+            "Wikipedia Summary": artist_info["artist_wikipedia_summary"],
+            "Wikipedia URL": artist_info["artist_wikipedia_url"],
+            "Apple Music attributes": apple_music_attributes,
         }
 
-        # Save to cache before returning
+        # Save to database and return
         db_handler.save_release(release_id, item_data)
         return item_data
-        
+
     except Exception as e:
         logging.error(f"Error processing item {release_id}: {str(e)}")
         db_handler.add_skip_release(release_id)
@@ -868,6 +845,23 @@ def load_skip_releases():
     """
     db = DatabaseHandler(DB_PATH)
     return db.get_skip_releases()
+
+def verify_apple_music_token(token):
+    """
+    Verify that the Apple Music token is valid by making a test request.
+    """
+    try:
+        # Try to search for a very common album as a test
+        test_result = get_apple_music_data('albums', 'The Beatles Abbey Road', token)
+        if test_result:
+            logging.info("Apple Music token verification successful")
+            return True
+        else:
+            logging.error("Apple Music token verification failed - no results returned")
+            return False
+    except Exception as e:
+        logging.error(f"Apple Music token verification failed with error: {str(e)}")
+        return False
 
 def main():
     # Parse command line arguments
@@ -910,6 +904,11 @@ def main():
     spotify_token = get_spotify_token(spotify_client_id, spotify_client_secret)
     jwt_apple_music_token = generate_apple_music_token(APPLE_KEY_FILE_PATH, apple_music_client_id, apple_developer_team_id)
 
+    # Verify Apple Music token
+    if not verify_apple_music_token(jwt_apple_music_token):
+        logging.error("Failed to verify Apple Music token - Apple Music integration will be disabled")
+        jwt_apple_music_token = None
+    
     # Initialize Discogs client and get collection
     discogs_client = Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
     
