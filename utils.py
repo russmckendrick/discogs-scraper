@@ -4,6 +4,8 @@ import wikipedia
 import requests
 import base64
 from difflib import SequenceMatcher
+import os
+import html2text
 
 def sanitize_slug(text):
     """
@@ -171,3 +173,63 @@ def get_spotify_id(artist, album_name, spotify_token):
     except Exception as e:
         logging.error(f"Error querying Spotify API: {str(e)}")
         return None 
+
+def download_artist_image(url, output_path, size='2000x2000'):
+    """
+    Downloads artist image, converting Apple Music URL to desired size if needed.
+    Returns True if successful, False otherwise.
+    """
+    if os.path.exists(output_path):
+        logging.info(f"Artist image already exists at {output_path}")
+        return True
+        
+    try:
+        if 'mzstatic.com' in url:
+            # Replace {w}x{h} with desired size for Apple Music URLs
+            url = url.replace('{w}x{h}', size)
+        
+        logging.info(f"Downloading artist image from {url}")
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return True
+    except Exception as e:
+        logging.error(f"Error downloading artist image: {str(e)}")
+    return False
+
+def get_best_artist_profile(artist_info):
+    """
+    Gets the best available artist profile text using priority:
+    Apple Music -> Discogs -> Wikipedia
+    """
+    profile = None
+    
+    # Try Apple Music bio first
+    if artist_info.get('apple_music_bio'):
+        profile = artist_info['apple_music_bio']
+    # Then try Discogs profile
+    elif artist_info.get('profile'):
+        profile = artist_info['profile']
+    # Finally try Wikipedia
+    elif artist_info.get('artist_wikipedia_summary'):
+        profile = artist_info['artist_wikipedia_summary']
+        
+    if profile:
+        # Convert to markdown and clean up
+        profile = html2text.handle(profile)
+        # Remove multiple newlines
+        profile = re.sub(r'\n\s*\n', '\n\n', profile)
+        # Remove any remaining HTML
+        profile = re.sub(r'<[^>]+>', '', profile)
+        
+    return profile
+
+def sanitize_artist_name(name):
+    """
+    Sanitizes artist name by removing numbers in brackets etc.
+    """
+    # Remove numbers in brackets at end of name
+    name = re.sub(r'\s*\(\d+\)\s*$', '', name)
+    return name.strip() 

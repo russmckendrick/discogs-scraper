@@ -3,7 +3,9 @@ from pathlib import Path
 import json
 import logging
 import time
-from utils import sanitize_slug, get_wikipedia_data, search_apple_music
+from utils import sanitize_slug, get_wikipedia_data, search_apple_music, download_artist_image, get_best_artist_profile, sanitize_artist_name
+import os
+from jinja2 import Template
 
 class DatabaseHandler:
     def __init__(self, db_path='collection_cache.db', skip_file='skip_releases.txt'):
@@ -270,3 +272,92 @@ class DatabaseHandler:
                     continue
             
             logging.info(f"Artist migration complete. Migrated {artists_count} unique artists")
+
+    def verify_artist(self, artist_name, artist_id, discogs_client):
+        """
+        Verifies artist exists in cache, adds if missing.
+        Returns artist info dict.
+        """
+        artist_info = self.get_artist(artist_id)
+        if not artist_info:
+            logging.info(f"Artist {artist_name} not in cache, fetching data")
+            try:
+                # Get full artist data from Discogs
+                artist = discogs_client.artist(artist_id)
+                
+                # Initialize data structure
+                artist_info = {
+                    'id': artist_id,
+                    'name': artist_name,
+                    'profile': artist.profile if hasattr(artist, 'profile') else '',
+                    'url': artist.url if hasattr(artist, 'url') else '',
+                    'aliases': [alias.name for alias in artist.aliases] if hasattr(artist, 'aliases') else [],
+                    'members': [member.name for member in artist.members] if hasattr(artist, 'members') else [],
+                    'images': [img.get('resource_url') for img in artist.images] if hasattr(artist, 'images') else [],
+                    'slug': sanitize_slug(artist_name)
+                }
+                
+                # Save to database
+                self.save_artist(artist_id, artist_name, artist_info)
+                
+            except Exception as e:
+                logging.error(f"Error verifying artist {artist_name}: {str(e)}")
+                return None
+                
+        return artist_info
+
+    def generate_artist_page(self, artist_info, output_dir):
+        """
+        Generates artist page if it doesn't exist.
+        Returns True if successful or page exists, False on error.
+        """
+        artist_name = sanitize_artist_name(artist_info['name'])
+        artist_slug = artist_info['slug']
+        artist_dir = os.path.join(output_dir, artist_slug)
+        index_file = os.path.join(artist_dir, '_index.md')
+        
+        # Skip if page already exists
+        if os.path.exists(index_file):
+            logging.info(f"Artist page already exists for {artist_name}")
+            return True
+        
+        try:
+            # Create artist directory
+            os.makedirs(artist_dir, exist_ok=True)
+            
+            # Get best profile text
+            profile = get_best_artist_profile(artist_info)
+            
+            # Try to get image
+            image_filename = None
+            if artist_info.get('apple_music_image'):
+                image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
+                if download_artist_image(artist_info['apple_music_image'], image_path):
+                    image_filename = f"{artist_slug}.jpg"
+            if not image_filename and artist_info.get('images'):
+                # Fall back to first Discogs image
+                image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
+                if download_artist_image(artist_info['images'][0], image_path):
+                    image_filename = f"{artist_slug}.jpg"
+                
+            # Generate page content using template
+            with open('artist_template.md', 'r') as f:
+                template = Template(f.read())
+                
+            content = template.render(
+                name=artist_name,
+                profile=profile,
+                image=image_filename,
+                url=artist_info.get('url', ''),
+                apple_music_url=artist_info.get('apple_music_url', '')
+            )
+            
+            # Write page
+            with open(index_file, 'w') as f:
+                f.write(content)
+                
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error generating artist page for {artist_name}: {str(e)}")
+            return False
