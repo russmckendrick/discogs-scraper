@@ -501,19 +501,34 @@ def get_artist_info(artist_name, discogs_client):
         logging.error(f"Error fetching artist information for {artist_name}: {str(e)}")
     return None
 
-def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=None, discogs_client=None):
-    """
-    Process a single Discogs item and create a dictionary of the item's information.
-    """
-    release = item.release
-    release_id = release.id
-    
-    # Check cache first
-    cached_data = db_handler.get_release(release_id)
-    if cached_data:
-        return cached_data
-
+def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=None, processed_artists=None):
+    """Process a single item from the collection."""
     try:
+        release_id = item.release.id
+        release = item.release
+        
+        # Check if we already have this release
+        cached_data = db_handler.get_release(release_id)
+        if cached_data:
+            logging.info(f"Using cached data for release {release_id}")
+            
+            # Verify artist exists in cache even for cached releases
+            if processed_artists is not None and 'Artist Info' in cached_data:
+                artist_info = cached_data['Artist Info']
+                if artist_info and 'id' in artist_info:
+                    artist_id = artist_info['id']
+                    artist_name = artist_info.get('name', cached_data.get('Artist Name', 'Unknown Artist'))
+                    
+                    # Verify artist exists in cache
+                    verified_artist = db_handler.verify_artist(artist_name, artist_id, discogs_client)
+                    if verified_artist:
+                        processed_artists.add(artist_id)
+                        
+                        # Generate artist page
+                        db_handler.generate_artist_page(verified_artist, ARTIST_DIRECTORY)
+            
+            return cached_data
+
         artist_name = release.artists[0].name
         artist_id = release.artists[0].id
         
@@ -614,6 +629,21 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
 
         # Save to database and return
         db_handler.save_release(release_id, item_data)
+
+        # Get artist info and verify in cache
+        artist_info = release.artists[0] if release.artists else None
+        if artist_info and processed_artists is not None:
+            artist_id = artist_info.id
+            artist_name = artist_info.name
+            
+            # Verify artist exists in cache
+            verified_artist = db_handler.verify_artist(artist_name, artist_id, discogs_client)
+            if verified_artist:
+                processed_artists.add(artist_id)
+                
+                # Generate artist page
+                db_handler.generate_artist_page(verified_artist, ARTIST_DIRECTORY)
+
         return item_data
 
     except Exception as e:
@@ -829,7 +859,13 @@ def main():
                         try:
                             # Log API request
                             logging.info(f"Fetching data for release {item.release.id} from Discogs API")
-                            item_data = process_item(item, db_handler, spotify_token, jwt_apple_music_token, discogs_client)
+                            item_data = process_item(
+                                item, 
+                                db_handler, 
+                                jwt_apple_music_token=jwt_apple_music_token,
+                                spotify_token=spotify_token,
+                                processed_artists=processed_artists  # Pass the set here
+                            )
                             break  # Exit loop if successful
                         except discogs_client.exceptions.HTTPError as http_err:
                             if http_err.status_code == 429:
@@ -872,6 +908,7 @@ def main():
             print("-" * 50)
         print(f"\nTotal missing images: {len(download_image.missing_images)}")
 
+    logging.info(f"Processed {len(processed_artists)} unique artists")
     logging.info("Processing complete")
 
 if __name__ == "__main__":
