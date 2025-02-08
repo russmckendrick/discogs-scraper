@@ -60,20 +60,13 @@ def get_wikipedia_data(target, keyword):
         tuple: The summary and URL of the Wikipedia page if it exists, is not a disambiguation page, and its URL 
                contains the specified keyword. Both elements of the tuple are None otherwise.
     """
+    logging.info(f"Searching Wikipedia for '{target}' with keyword '{keyword}'")
+    
     def normalize_text(text):
         """Helper function to normalize text for comparison"""
-        # Remove common suffixes and prefixes
-        text = text.lower()
-        text = text.replace("(album)", "").strip()
-        # Handle special characters
-        text = text.replace("'s", "s")  # Handle possessives
-        text = text.replace("'", "")    # Remove other apostrophes
-        text = text.replace("%27", "")  # Handle URL-encoded apostrophes
-        text = text.replace("_", "")    # Remove underscores
-        text = text.replace(" ", "")    # Remove spaces
-        text = text.replace("-", "")    # Remove hyphens
-        text = text.replace(".", "")    # Remove periods
-        return text
+        normalized = text.lower().replace("(album)", "").strip()
+        logging.debug(f"Normalized text: '{text}' -> '{normalized}'")
+        return normalized
 
     def check_url_match(url, search_keyword):
         """Helper function to check if URL matches the keyword"""
@@ -84,10 +77,13 @@ def get_wikipedia_data(target, keyword):
     try:
         # First try: direct search with (album)
         try:
+            logging.debug(f"Attempting direct search with '(album)' for: {target}")
             page = wikipedia.page(target)
             if check_url_match(page.url, keyword):
+                logging.info(f"Found Wikipedia match: {page.url}")
                 return page.summary, page.url
         except wikipedia.exceptions.DisambiguationError as e:
+            logging.debug(f"Got disambiguation page for '{target}'. Options: {e.options[:3]}")
             # If we get a disambiguation error, try the first few options
             for option in e.options[:3]:
                 try:
@@ -96,8 +92,8 @@ def get_wikipedia_data(target, keyword):
                         return option_page.summary, option_page.url
                 except:
                     continue
-        except:
-            pass
+        except Exception as e:
+            logging.debug(f"Direct search failed for '{target}': {str(e)}")
 
         # Second try: search without (album)
         clean_target = target.replace(" (album)", "")
@@ -139,10 +135,7 @@ def get_wikipedia_data(target, keyword):
         return None, None
 
     except wikipedia.exceptions.PageError as e:
-        logging.debug(f"PageError: No page found for any of these searches:")
-        logging.debug(f"  1. '{target}'")
-        logging.debug(f"  2. '{clean_target}'")
-        logging.debug(f"  3. '{keyword}'")
+        logging.warning(f"Wikipedia PageError: No page found for '{target}'")
         return None, None
 
 def generate_apple_music_token(private_key_path, key_id, team_id):
@@ -207,8 +200,11 @@ def get_apple_music_data(search_type, query, token):
             connection timeout, or similar.
         requests.exceptions.HTTPError: If an invalid HTTP response was received.
     """
+    logging.info(f"Querying Apple Music API for {search_type}: '{query}'")
+    
     base_url = "https://api.music.apple.com/v1/catalog/"
     store_front = APPLE_MUSIC_STOREFRONT
+    search_url = f"{base_url}{store_front}/search"
 
     headers = {
         'Authorization': f'Bearer {token}'
@@ -220,38 +216,31 @@ def get_apple_music_data(search_type, query, token):
         'types': search_type
     }
 
-    search_url = f"{base_url}{store_front}/search"
-    search_response = requests.get(search_url, headers=headers, params=search_params)
-
-    if search_response.status_code == 200:
-        search_data = search_response.json()
-
-        if search_type == 'artists' and 'artists' in search_data['results'] and search_data['results']['artists']['data']:
-            artists_data = search_data['results']['artists']['data']
-            logging.info(f"Search results for artists with query '{query}':")
-            for artist in artists_data:
-                logging.info(f"- {artist['attributes']['name']}")
+    try:
+        logging.debug(f"Making Apple Music API request to: {search_url}")
+        search_response = requests.get(search_url, headers=headers, params=search_params)
+        
+        if search_response.status_code == 200:
+            search_data = search_response.json()
             
-            # Find the artist with the closest name match
-            best_match = max(artists_data, key=lambda x: SequenceMatcher(None, query.lower(), x['attributes']['name'].lower()).ratio())
-            return best_match
-
-        elif search_type == 'albums' and 'albums' in search_data['results'] and search_data['results']['albums']['data']:
-            albums_data = search_data['results']['albums']['data']
-            logging.info(f"Search results for albums with query '{query}':")
-            for album in albums_data:
-                logging.info(f"- {album['attributes']['name']} by {album['attributes']['artistName']}")
-            
-            # Find the album with the closest name match
-            best_match = max(albums_data, key=lambda x: SequenceMatcher(None, query.lower(), x['attributes']['name'].lower()).ratio())
-            return best_match
-
+            if search_type in search_data['results'] and search_data['results'][search_type]['data']:
+                results = search_data['results'][search_type]['data']
+                logging.info(f"Found {len(results)} Apple Music results for '{query}'")
+                for result in results:
+                    logging.debug(f"- {result['attributes'].get('name', 'Unknown')} by {result['attributes'].get('artistName', 'Unknown')}")
+                
+                best_match = max(results, key=lambda x: SequenceMatcher(None, query.lower(), x['attributes']['name'].lower()).ratio())
+                logging.info(f"Selected best match: {best_match['attributes'].get('name', 'Unknown')}")
+                return best_match
+            else:
+                logging.warning(f"No {search_type} found in Apple Music for query '{query}'")
+                return None
         else:
-            logging.error(f"No {search_type} found for query '{query}'")
+            logging.error(f"Apple Music API error {search_response.status_code}: {search_response.text}")
             return None
 
-    else:
-        logging.error(f"Error {search_response.status_code}: Could not fetch data from Apple Music API")
+    except Exception as e:
+        logging.error(f"Error querying Apple Music API: {str(e)}")
         return None
 
 @retry(wait=wait_fixed(60))  # Adjust this value as needed
@@ -371,6 +360,12 @@ def get_spotify_id(artist, album_name, spotify_token):
     Returns:
         str: The Spotify ID of the album, or None if not found.
     """
+    if not spotify_token:
+        logging.debug("No Spotify token provided, skipping Spotify lookup")
+        return None
+
+    logging.info(f"Searching Spotify for album: {artist} - {album_name}")
+    
     url = 'https://api.spotify.com/v1/search'
     params = {
         'q': f'artist:{artist} album:{album_name}',
@@ -381,13 +376,26 @@ def get_spotify_id(artist, album_name, spotify_token):
         'Authorization': f'Bearer {spotify_token}'
     }
 
-    response = requests.get(url, headers=headers, params=params)
-    if response.status_code == 200:
-        json_response = response.json()
-        if json_response.get('albums', {}).get('items'):
-            spotify_id = json_response['albums']['items'][0]['id']
-            return spotify_id
-    return None
+    try:
+        logging.debug(f"Making Spotify API request to: {url}")
+        response = requests.get(url, headers=headers, params=params)
+        
+        if response.status_code == 200:
+            json_response = response.json()
+            if json_response.get('albums', {}).get('items'):
+                spotify_id = json_response['albums']['items'][0]['id']
+                logging.info(f"Found Spotify ID: {spotify_id}")
+                return spotify_id
+            else:
+                logging.warning(f"No Spotify results found for: {artist} - {album_name}")
+                return None
+        else:
+            logging.error(f"Spotify API error {response.status_code}: {response.text}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Error querying Spotify API: {str(e)}")
+        return None
 
 def get_spotify_token(client_id, client_secret):
     """
@@ -400,6 +408,8 @@ def get_spotify_token(client_id, client_secret):
     Returns:
         str: The access token, or None if not obtained.
     """
+    logging.info("Requesting Spotify access token")
+    
     url = 'https://accounts.spotify.com/api/token'
     headers = {
         'Authorization': f'Basic {base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()}'
@@ -409,12 +419,17 @@ def get_spotify_token(client_id, client_secret):
     }
 
     try:
+        logging.debug(f"Making Spotify auth request to: {url}")
         response = requests.post(url, headers=headers, data=data)
+        
         if response.status_code == 200:
-            return response.json()['access_token']
+            token = response.json()['access_token']
+            logging.info("Successfully obtained Spotify access token")
+            return token
         else:
             logging.error(f"Failed to get Spotify token. Status code: {response.status_code}")
             return None
+            
     except Exception as e:
         logging.error(f"Error getting Spotify token: {str(e)}")
         return None
