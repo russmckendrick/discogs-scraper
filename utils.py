@@ -233,3 +233,134 @@ def sanitize_artist_name(name):
     # Remove numbers in brackets at end of name
     name = re.sub(r'\s*\(\d+\)\s*$', '', name)
     return name.strip() 
+
+def extract_youtube_id(url):
+    """
+    Extracts YouTube video ID from various YouTube URL formats.
+    
+    Args:
+        url (str): YouTube URL
+        
+    Returns:
+        str: YouTube video ID or None if not found
+    """
+    if not url:
+        return None
+        
+    # Common YouTube URL patterns
+    patterns = [
+        r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)',
+        r'youtube\.com\/watch\?.*v=([^&\n?#]+)',
+        r'youtube\.com\/shorts\/([^&\n?#]+)'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+            
+    return None
+
+def format_youtube_embed(video_id):
+    """
+    Formats YouTube video ID into Hugo shortcode.
+    
+    Args:
+        video_id (str): YouTube video ID
+        
+    Returns:
+        str: Hugo shortcode for YouTube embed
+    """
+    if not video_id:
+        return ''
+    return f'{{{{< youtube {video_id} >}}}}'
+
+def format_track_duration(duration):
+    """
+    Formats track duration into MM:SS format.
+    
+    Args:
+        duration (str): Duration string
+        
+    Returns:
+        str: Formatted duration or empty string if invalid
+    """
+    if not duration:
+        return ''
+        
+    try:
+        # Try to parse duration string (could be in various formats)
+        if ':' in duration:
+            # Already in MM:SS format
+            return duration
+        else:
+            # Convert seconds to MM:SS
+            seconds = int(duration)
+            minutes = seconds // 60
+            remaining_seconds = seconds % 60
+            return f"{minutes}:{remaining_seconds:02d}"
+    except:
+        return duration
+
+def format_track_list(tracks):
+    """
+    Formats track list into markdown table.
+    
+    Args:
+        tracks (list): List of track dictionaries
+        
+    Returns:
+        str: Markdown formatted track list table
+    """
+    if not tracks:
+        return ''
+        
+    # Start table with headers
+    table = "| Position | Title | Duration |\n"
+    table += "|----------|-------|----------|\n"
+    
+    # Add each track
+    for track in tracks:
+        position = track.get('number', '')
+        title = track.get('title', '')
+        duration = format_track_duration(track.get('duration', ''))
+        table += f"| {position} | {title} | {duration} |\n"
+        
+    return table
+
+def format_release_formats(formats):
+    """
+    Formats release format information into readable text.
+    
+    Args:
+        formats (list): List of format dictionaries
+        
+    Returns:
+        str: Formatted text describing formats
+    """
+    if not formats:
+        return ''
+        
+    format_strings = []
+    for fmt in formats:
+        parts = []
+        
+        # Add quantity if present
+        if fmt.get('qty'):
+            parts.append(f"{fmt['qty']}×")
+            
+        # Add format name
+        if fmt.get('name'):
+            parts.append(fmt['name'])
+            
+        # Add text description
+        if fmt.get('text'):
+            parts.append(f"({fmt['text']})")
+            
+        # Add descriptions
+        if fmt.get('descriptions'):
+            parts.append(', '.join(fmt['descriptions']))
+            
+        format_strings.append(' '.join(parts))
+        
+    return ' | '.join(format_strings) 

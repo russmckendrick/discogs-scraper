@@ -28,7 +28,12 @@ from utils import (
     search_apple_music, 
     sanitize_slug,
     get_spotify_token,
-    get_spotify_id
+    get_spotify_id,
+    extract_youtube_id,
+    format_youtube_embed,
+    format_track_duration,
+    format_track_list,
+    format_release_formats
 )
 import re
 

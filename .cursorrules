@@ -181,6 +181,11 @@ Next Steps:
 6. Utils Functions Added:
    - get_spotify_token: Handles Spotify API authentication
    - get_spotify_id: Searches for album IDs on Spotify
+   - extract_youtube_id: Extracts video IDs from YouTube URLs
+   - format_youtube_embed: Creates Hugo shortcodes for YouTube videos
+   - format_track_duration: Formats track durations consistently
+   - format_track_list: Creates markdown tables for track listings
+   - format_release_formats: Formats release format information
    - Added proper error handling and logging for API calls
    - Added rate limit and token validation checks
 
