@@ -507,148 +507,104 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         release_id = item.release.id
         release = item.release
         
+        logging.info(f"Processing release: {release_id} - {release.title}")
+        
         # Check if we already have this release
         cached_data = db_handler.get_release(release_id)
         if cached_data:
             logging.info(f"Using cached data for release {release_id}")
-            
-            # Verify artist exists in cache even for cached releases
-            if processed_artists is not None and 'Artist Info' in cached_data:
-                artist_info = cached_data['Artist Info']
-                if artist_info and 'id' in artist_info:
-                    artist_id = artist_info['id']
-                    artist_name = artist_info.get('name', cached_data.get('Artist Name', 'Unknown Artist'))
-                    
-                    # Verify artist exists in cache
-                    verified_artist = db_handler.verify_artist(artist_name, artist_id, discogs_client)
-                    if verified_artist:
-                        processed_artists.add(artist_id)
-                        
-                        # Generate artist page
-                        db_handler.generate_artist_page(verified_artist, ARTIST_DIRECTORY)
-            
             return cached_data
 
-        artist_name = release.artists[0].name
-        artist_id = release.artists[0].id
-        
-        # Get and cache artist information
-        cached_artist = db_handler.get_artist(artist_id)
-        if not cached_artist:
-            artist_info = get_artist_info(artist_name, discogs_client)
-            if artist_info:
-                db_handler.save_artist(artist_id, artist_name, artist_info)
-                logging.info(f"Cached new artist information for {artist_name}")
-            else:
-                logging.error(f"Failed to get artist info for {artist_name}")
-        else:
-            artist_info = cached_artist
-            logging.debug(f"Using cached artist information for {artist_name}")
+        logging.info(f"No cache found for release {release_id}, fetching new data")
 
-        album_title = release.title
-        date_added = item.data['date_added'] if 'date_added' in item.data else None
-        genre = release.genres
-        style = release.styles
-        label = release.labels[0].name if release.labels else None
-        catalog_number = item.data['basic_information']['labels'][0]['catno'] if item.data['basic_information']['labels'] else None
-
-        # Get release formats
-        release_formats = [
-            {
-                key: fmt[key] for key in ["name", "qty", "text", "descriptions"] if key in fmt
-            }
-            for fmt in release.formats
-        ] if release.formats else None
-
-        release_date = release.year
-        country = release.country
-        rating = item.data.get('rating', 0)  # Default to 0 if not present
-
-        # Get track list
-        track_list = [{'number': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist]
-
-        # Get album cover URL
-        cover_url = release.images[0]['resource_url'] if release.images else None
-        all_images_urls = [img['resource_url'] for img in release.images] if release.images else None
-
-        # Get videos
-        videos = [{'title': video.title, 'url': video.url} for video in release.videos] if release.videos else None
-
-        release_url = release.url
-        notes = release.notes
-
-        # Get credits
-        credits = [str(credit) for credit in release.extraartists] if hasattr(release, 'extraartists') else None
-
-        slug = sanitize_slug(f"{album_title}-{release_id}")
-
-        # Get Apple Music data with better error handling
-        apple_music_attributes = None
-        if jwt_apple_music_token and "various" not in artist_name.lower():
-            try:
-                apple_music_data = get_apple_music_data('albums', 
-                    f'{escape_quotes(artist_name)} {escape_quotes(album_title)}', 
-                    jwt_apple_music_token)
-                
-                if apple_music_data and 'attributes' in apple_music_data:
-                    apple_music_attributes = apple_music_data['attributes']
-                    logging.info(f"Found Apple Music data for {artist_name} - {album_title}")
-                else:
-                    logging.debug(f"No Apple Music data found for {artist_name} - {album_title}")
-            except Exception as e:
-                logging.error(f"Error fetching Apple Music data: {str(e)}")
-
-        # Create item data dictionary
+        # Get basic release information
         item_data = {
-            "Release ID": release_id,
-            "Artist Name": artist_name,
-            "Album Title": album_title,
-            "Slug": slug,
-            "Date Added": date_added,
-            "Genre": genre,
-            "Style": style,
-            "Label": label,
-            "Catalog Number": catalog_number,
-            "Release Formats": release_formats,
-            "Release Date": release_date,
-            "Country": country,
-            "Rating": rating,
-            "Track List": track_list,
-            "Album Cover URL": cover_url,
-            "All Images URLs": all_images_urls,
-            "Videos": videos,
-            "Release URL": release_url,
-            "Notes": notes,
-            "Credits": credits,
-            "Spotify ID": get_spotify_id(artist_name, album_title, spotify_token),
-            "Artist Info": artist_info,
-            "Wikipedia Summary": artist_info["artist_wikipedia_summary"],
-            "Wikipedia URL": artist_info["artist_wikipedia_url"],
-            "Apple Music attributes": apple_music_attributes,
+            'Title': release.title,
+            'Album Title': release.title,  # Add this for template compatibility
+            'Artist Name': release.artists[0].name if release.artists else 'Various',
+            'Artist Info': {
+                'id': release.artists[0].id,
+                'name': release.artists[0].name,
+                'url': release.artists[0].url
+            } if release.artists else None,
+            'Release ID': release_id,
+            'Year': release.year,
+            'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
+            'Formats': release.formats,
+            'Genres': release.genres,
+            'Styles': release.styles if hasattr(release, 'styles') else [],
+            'Notes': release.notes if hasattr(release, 'notes') else '',
+            'Tracklist': [{'position': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist],
+            'Images': [img.get('resource_url') for img in release.images] if hasattr(release, 'images') else [],
+            'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
+            'URL': release.url,
+            'Slug': sanitize_slug(f"{release.title}-{release_id}"),
+            'Date Added': item.data.get('date_added'),
+            'Rating': item.data.get('rating', 0)
         }
 
-        # Save to database and return
+        # Get additional data from APIs
+        if jwt_apple_music_token and item_data['Artist Name'].lower() != 'various':
+            try:
+                apple_music_data = get_apple_music_data(
+                    'albums',
+                    f"{item_data['Artist Name']} {item_data['Title']}",
+                    jwt_apple_music_token
+                )
+                if apple_music_data:
+                    item_data['Apple Music Data'] = apple_music_data.get('attributes', {})
+                    # Get high-res artwork URL
+                    artwork = apple_music_data.get('attributes', {}).get('artwork', {})
+                    if artwork:
+                        # Replace w and h with 2000 for high res
+                        item_data['Apple Music Image'] = artwork.get('url', '').replace('{w}', '2000').replace('{h}', '2000')
+            except Exception as e:
+                logging.error(f"Error getting Apple Music data: {str(e)}")
+
+        if spotify_token:
+            try:
+                spotify_id = get_spotify_id(
+                    item_data['Artist Name'],
+                    item_data['Title'],
+                    spotify_token
+                )
+                if spotify_id:
+                    item_data['Spotify ID'] = spotify_id
+            except Exception as e:
+                logging.error(f"Error getting Spotify data: {str(e)}")
+
+        # Create the output directory for this release
+        release_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
+        os.makedirs(release_dir, exist_ok=True)
+
+        # Try to download Apple Music image first, fall back to Discogs
+        image_path = os.path.join(release_dir, f"{item_data['Slug']}.jpg")
+        if item_data.get('Apple Music Image'):
+            logging.info(f"Attempting to download Apple Music image for {item_data['Title']}")
+            try:
+                urlretrieve(item_data['Apple Music Image'], image_path)
+                logging.info(f"Successfully downloaded Apple Music image to {image_path}")
+            except Exception as e:
+                logging.error(f"Failed to download Apple Music image: {str(e)}")
+                # Fall back to Discogs image
+                if item_data['Images']:
+                    download_image(item_data['Images'][0], image_path)
+        elif item_data['Images']:
+            download_image(item_data['Images'][0], image_path)
+
+        # Save to database
+        logging.info(f"Saving release {release_id} to database")
         db_handler.save_release(release_id, item_data)
 
-        # Get artist info and verify in cache
-        artist_info = release.artists[0] if release.artists else None
-        if artist_info and processed_artists is not None:
-            artist_id = artist_info.id
-            artist_name = artist_info.name
-            
-            # Verify artist exists in cache
-            verified_artist = db_handler.verify_artist(artist_name, artist_id, discogs_client)
-            if verified_artist:
-                processed_artists.add(artist_id)
-                
-                # Generate artist page
-                db_handler.generate_artist_page(verified_artist, ARTIST_DIRECTORY)
+        # Create markdown file
+        logging.info(f"Creating markdown file for release {release_id}")
+        create_markdown_file(item_data)
 
         return item_data
 
     except Exception as e:
-        logging.error(f"Error processing item {release_id}: {str(e)}")
-        db_handler.add_skip_release(release_id)
+        logging.error(f"Error processing release {release_id}: {str(e)}")
+        logging.exception("Full traceback:")
         return None
 
 def load_last_processed_index():
@@ -874,71 +830,40 @@ def main():
     total_items_to_process = num_items - last_processed_index
 
     # Process all items in the collection
-    with tqdm(total=total_items_to_process, unit="item", bar_format="{desc} |{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}]") as progress_bar:
+    with tqdm(total=total_items_to_process, unit="item") as progress_bar:
         for index, item in enumerate(collection):
             if index < last_processed_index:
                 logging.debug(f"Skipping index {index}, already processed.")
                 progress_bar.update(1)
                 continue
 
-            if index % COLLECTION_PAGE_SIZE == 0 and index > 0:
-                logging.info(f"Waiting {COLLECTION_PAGE_DELAY} seconds before fetching next page...")
-                time.sleep(COLLECTION_PAGE_DELAY)
-
             try:
-                # Skip if in skip_releases (compare as integers)
-                if item.release.id in skip_releases:
-                    logging.info(f"Skipping release {item.release.id} (in skip list)")
-                    progress_bar.update(1)
-                    continue
+                logging.info(f"Processing item {index + 1} of {total_items_to_process}")
+                logging.info(f"Release ID: {item.release.id}, Title: {item.release.title}")
 
-                # Log cache check
-                logging.debug(f"Checking cache for release {item.release.id}")
+                # Process the item
+                item_data = process_item(
+                    item, 
+                    db_handler, 
+                    jwt_apple_music_token=jwt_apple_music_token,
+                    spotify_token=spotify_token,
+                    processed_artists=processed_artists
+                )
 
-                # For non-skipped items, check cache first
-                cached_data = db_handler.get_release(item.release.id)
-                
-                if cached_data:
-                    # Use cached data if it exists
-                    item_data = cached_data
-                    logging.debug(f"Using cached data for release {item.release.id}")
-                else:
-                    # Retry mechanism for handling 429 errors
-                    while True:
-                        try:
-                            # Log API request
-                            logging.info(f"Fetching data for release {item.release.id} from Discogs API")
-                            item_data = process_item(
-                                item, 
-                                db_handler, 
-                                jwt_apple_music_token=jwt_apple_music_token,
-                                spotify_token=spotify_token,
-                                processed_artists=processed_artists  # Pass the set here
-                            )
-                            break  # Exit loop if successful
-                        except discogs_client.exceptions.HTTPError as http_err:
-                            if http_err.status_code == 429:
-                                logging.warning("Rate limit exceeded. Waiting for 60 seconds before retrying...")
-                                time.sleep(60)
-                            else:
-                                raise  # Re-raise if it's not a 429 error
-                
-                # Add delay between API requests
-                if DELAY > 0:
-                    time.sleep(DELAY)
-
-                # Create markdown file if we have data
                 if item_data:
-                    create_markdown_file(item_data)
-                
-                # Update last processed index
+                    logging.info(f"Successfully processed release: {item_data.get('Title', 'Unknown Title')}")
+                else:
+                    logging.warning(f"Failed to process release {item.release.id}: {item.release.title}")
+
+                # Save progress even if processing failed
                 with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
                     f.write(str(index))
-                
+
                 progress_bar.update(1)
 
             except Exception as e:
-                logging.error(f"Error processing release {item.release.id}: {str(e)}")
+                logging.error(f"Error in main loop for release {item.release.id}: {str(e)}")
+                logging.exception("Full traceback:")
                 progress_bar.update(1)
                 continue
 

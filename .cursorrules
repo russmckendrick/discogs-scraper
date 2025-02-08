@@ -150,6 +150,7 @@ Next Steps:
    - Always verify API tokens before starting main processing
    - Keep API data structures separate (don't mix Apple Music with Wikipedia data)
    - Add proper error handling and logging for each API call
+   - Handle Discogs API object attributes directly (e.g., video.url) rather than using get() method
 
 2. Data Structure:
    - When caching API responses, maintain consistent data structure
@@ -172,6 +173,8 @@ Next Steps:
    - Maintain consistent image and file naming using slugs
    - Keep existing text formatting and sanitization
    - Verify artists exist in cache during release processing
+   - Properly sanitize artist names by removing numbers in brackets
+   - Skip generation if both image and _index.md exist
 
 5. Data Safety:
    - Never include data deletion in migration scripts

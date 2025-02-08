@@ -17,7 +17,11 @@ h.body_width = 0  # Don't wrap text
 def sanitize_slug(text):
     """
     Convert text to a URL-friendly slug.
+    Remove any trailing numbers in parentheses first.
     """
+    # Remove numbers in parentheses at end of name
+    text = re.sub(r'\s*\(\d+\)\s*$', '', text)
+    
     # Convert to lowercase
     slug = text.lower()
     
@@ -224,12 +228,25 @@ def get_best_artist_profile(artist_info):
         profile = artist_info['artist_wikipedia_summary']
         
     if profile:
+        # Convert BBCode to markdown
+        profile = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', profile)  # Bold
+        profile = re.sub(r'\[u\](.*?)\[/u\]', r'*\1*', profile)    # Italic
+        profile = re.sub(r'\[i\](.*?)\[/i\]', r'*\1*', profile)    # Italic
+        
         # Convert to markdown and clean up
         profile = h.handle(profile)  # Use the initialized instance
+        
         # Remove multiple newlines
         profile = re.sub(r'\n\s*\n', '\n\n', profile)
-        # Remove any remaining HTML
+        
+        # Remove any remaining HTML or BBCode
         profile = re.sub(r'<[^>]+>', '', profile)
+        profile = re.sub(r'\[[^\]]+\]', '', profile)
+        
+        # Clean up any markdown artifacts
+        profile = re.sub(r'\*\s*\*', '', profile)  # Remove empty bold/italic
+        profile = re.sub(r'_{2,}', '', profile)    # Remove multiple underscores
+        profile = profile.strip()
         
     return profile
 

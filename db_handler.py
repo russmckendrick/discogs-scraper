@@ -283,23 +283,26 @@ class DatabaseHandler:
         Verifies artist exists in cache, adds if missing.
         Returns artist info dict.
         """
+        # Sanitize artist name first
+        artist_name = sanitize_artist_name(artist_name)  # Remove (3) etc.
+        
         artist_info = self.get_artist(artist_id)
         if not artist_info:
             logging.info(f"Artist {artist_name} not in cache, fetching data")
             try:
                 # Get full artist data from Discogs
-                artist = discogs_client.artist(artist_id)
+                artist = discogs_client.master(artist_id)  # Use master instead of artist
                 
-                # Initialize data structure
+                # Initialize data structure with sanitized name
                 artist_info = {
                     'id': artist_id,
-                    'name': artist_name,
+                    'name': sanitize_artist_name(artist.name),  # Sanitize here too
                     'profile': artist.profile if hasattr(artist, 'profile') else '',
                     'url': artist.url if hasattr(artist, 'url') else '',
-                    'aliases': [alias.name for alias in artist.aliases] if hasattr(artist, 'aliases') else [],
-                    'members': [member.name for member in artist.members] if hasattr(artist, 'members') else [],
+                    'aliases': [sanitize_artist_name(alias.name) for alias in artist.aliases] if hasattr(artist, 'aliases') else [],
+                    'members': [sanitize_artist_name(member.name) for member in artist.members] if hasattr(artist, 'members') else [],
                     'images': [img.get('resource_url') for img in artist.images] if hasattr(artist, 'images') else [],
-                    'slug': sanitize_slug(artist_name)
+                    'slug': sanitize_slug(artist_name)  # Use sanitized name for slug
                 }
                 
                 # Save to database
@@ -317,13 +320,14 @@ class DatabaseHandler:
         Returns True if successful or page exists, False on error.
         """
         artist_name = sanitize_artist_name(artist_info['name'])
-        artist_slug = artist_info['slug']
+        artist_slug = sanitize_slug(artist_name)  # Use sanitized name for slug
         artist_dir = os.path.join(output_dir, artist_slug)
         index_file = os.path.join(artist_dir, '_index.md')
+        image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
         
-        # Skip if page already exists
-        if os.path.exists(index_file):
-            logging.info(f"Artist page already exists for {artist_name}")
+        # Skip if both page and image already exist
+        if os.path.exists(index_file) and os.path.exists(image_path):
+            logging.info(f"Artist page and image already exist for {artist_name}, skipping")
             return True
         
         try:
@@ -333,33 +337,36 @@ class DatabaseHandler:
             # Get best profile text
             profile = get_best_artist_profile(artist_info)
             
-            # Try to get image
+            # Only try to get image if it doesn't exist
             image_filename = None
-            if artist_info.get('apple_music_image'):
-                image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
-                if download_artist_image(artist_info['apple_music_image'], image_path):
-                    image_filename = f"{artist_slug}.jpg"
-            if not image_filename and artist_info.get('images'):
-                # Fall back to first Discogs image
-                image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
-                if download_artist_image(artist_info['images'][0], image_path):
-                    image_filename = f"{artist_slug}.jpg"
+            if not os.path.exists(image_path):
+                if artist_info.get('apple_music_image'):
+                    if download_artist_image(artist_info['apple_music_image'], image_path):
+                        image_filename = f"{artist_slug}.jpg"
+                elif artist_info.get('images'):
+                    if download_artist_image(artist_info['images'][0], image_path):
+                        image_filename = f"{artist_slug}.jpg"
+            else:
+                image_filename = f"{artist_slug}.jpg"
                 
-            # Generate page content using template
-            with open('artist_template.md', 'r') as f:
-                template = Template(f.read())
+            # Only generate page if it doesn't exist
+            if not os.path.exists(index_file):
+                # Generate page content using template
+                with open('artist_template.md', 'r') as f:
+                    template = Template(f.read())
+                    
+                content = template.render(
+                    title=artist_name,
+                    summary=profile or "",
+                    image=image_filename or "",
+                    apple_music_url=artist_info.get('apple_music_url', ""),
+                    wikipedia_url=artist_info.get('artist_wikipedia_url', ""),
+                    url=artist_info.get('url', "")
+                )
                 
-            content = template.render(
-                name=artist_name,
-                profile=profile,
-                image=image_filename,
-                url=artist_info.get('url', ''),
-                apple_music_url=artist_info.get('apple_music_url', '')
-            )
-            
-            # Write page
-            with open(index_file, 'w') as f:
-                f.write(content)
+                # Write page
+                with open(index_file, 'w') as f:
+                    f.write(content)
                 
             return True
             
