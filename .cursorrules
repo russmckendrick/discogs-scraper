@@ -15,6 +15,9 @@ Here is some information about the projects files:
 - `website` is the directory for the static website.
 - `backups` is the directory for backups - this should be ignored.
 - `secrets.json` is a file that contains the secrets for the project.
+- `collection_cache.db` is the sqlite database that contains the collection cached data.
+- `album_template.md` is a markdown file that contains the template for the album pages.
+- `artist_template.md` is a markdown file that contains the template for the artist pages.
 
 # Instructions
 
