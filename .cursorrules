@@ -82,8 +82,8 @@ Changes Made:
     - Error handling and retries
 
 Next Steps:
-[ ] Test with a few releases to verify fix
-[ ] Monitor logs for Apple Music API responses
+[x] Test with a few releases to verify fix
+[x] Monitor logs for Apple Music API responses
 [ ] Consider adding retry mechanism for failed Apple Music requests
 
 ## Artist Page Generation Fix
@@ -111,8 +111,21 @@ Changes Made:
 [X] Added proper artist page generation in process_item
 [X] Added processed artists tracking
 [X] Added --artists-only flag for regenerating just artist pages
+[X] Added artists table to database
+[X] Added functions to save/get artist data
+[X] Modified process_item to cache artist info separately
+[X] Added migration function to populate artists table from releases
+[X] Fixed artist data extraction from releases
+[X] Added better error handling and logging for migration
 
 Next Steps:
+[X] Test database schema changes
+[X] Add migration function for artist data
+[X] Fix artist data extraction from releases
+[ ] Run migration and verify data
+[ ] Add function to update all artist pages from cache
+[ ] Add function to refresh artist cache
+[ ] Add periodic cleanup of old artist data
 [ ] Test artist page generation with various artists
 [ ] Verify image downloads are working
 [ ] Check artist template rendering
@@ -120,6 +133,7 @@ Next Steps:
 [ ] Consider caching artist data separately
 [ ] Add cleanup of processed_artists set periodically
 [ ] Test artists-only regeneration with large collection
+
 
 ## Lessons Learned
 
@@ -142,21 +156,4 @@ Next Steps:
     - Should separate artist data into its own table
     - Need to cache artist info independently of releases
     - Need to handle artist updates separately
-
-Changes Made:
-[X] Added artists table to database
-[X] Added functions to save/get artist data
-[X] Modified process_item to cache artist info separately
-[X] Added migration function to populate artists table from releases
-[X] Fixed artist data extraction from releases
-[X] Added better error handling and logging for migration
-
-Next Steps:
-[X] Test database schema changes
-[X] Add migration function for artist data
-[X] Fix artist data extraction from releases
-[ ] Run migration and verify data
-[ ] Add function to update all artist pages from cache
-[ ] Add function to refresh artist cache
-[ ] Add periodic cleanup of old artist data
 
