@@ -695,6 +695,7 @@ def main():
     parser.add_argument('--artists-only', action='store_true', help='Regenerate only artist pages')
     parser.add_argument('--migrate-artists', action='store_true', help='Migrate artist data from releases to artists table')
     parser.add_argument('--delay', type=int, default=DEFAULT_DELAY, help=f'Delay between requests in seconds (default: {DEFAULT_DELAY})')
+    parser.add_argument('--regenerate-artist', type=str, help='Regenerate specific artist page (provide artist name)')
     args = parser.parse_args()
 
     # Set up logging
@@ -809,6 +810,54 @@ def main():
                     time.sleep(DELAY)
         
         logging.info(f"Finished processing {len(processed_artists)} artists")
+        return
+
+    # Add new section for artist regeneration
+    if args.regenerate_artist:
+        logging.info(f"Regenerating artist page for: {args.regenerate_artist}")
+        
+        # Get all artists from database
+        artists = db_handler.get_all_artists()
+        found = False
+        
+        # Search for artist by name (case insensitive)
+        for artist_id, artist_data in artists.items():
+            if artist_data.get('name', '').lower() == args.regenerate_artist.lower():
+                found = True
+                logging.info(f"Found artist in database: {artist_data['name']}")
+                
+                # Remove existing artist image if it exists
+                artist_slug = artist_data['slug']
+                artist_dir = os.path.join(ARTIST_DIRECTORY, artist_slug)
+                image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
+                if os.path.exists(image_path):
+                    logging.info(f"Removing existing artist image: {image_path}")
+                    os.remove(image_path)
+                
+                # Remove existing _index.md if it exists
+                index_path = os.path.join(artist_dir, '_index.md')
+                if os.path.exists(index_path):
+                    logging.info(f"Removing existing artist page: {index_path}")
+                    os.remove(index_path)
+                
+                # Verify and update artist data
+                verified_artist = db_handler.verify_artist(
+                    artist_data['name'], 
+                    artist_id, 
+                    discogs_client
+                )
+                
+                if verified_artist:
+                    # Generate new artist page
+                    if db_handler.generate_artist_page(verified_artist, ARTIST_DIRECTORY):
+                        logging.info(f"Successfully regenerated artist page for {artist_data['name']}")
+                    else:
+                        logging.error(f"Failed to regenerate artist page for {artist_data['name']}")
+                break
+        
+        if not found:
+            logging.error(f"Artist not found in database: {args.regenerate_artist}")
+        
         return
 
     # Initialize processed artists set

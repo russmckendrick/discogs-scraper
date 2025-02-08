@@ -128,11 +128,12 @@ Next Steps:
 [X] Fix artist data extraction from releases
 [X] Run migration and verify data
 [X] Remove data deletion from migration script
-[ ] Update artist page generation:
-    [ ] Add image handling logic (Apple Music 2000x2000 -> Discogs)
-    [ ] Add skip logic for existing _index.md files
-    [ ] Update profile source priority (Apple Music -> Discogs -> Wikipedia)
-    [ ] Keep existing sanitization and markdown formatting
+[X] Update artist page generation:
+    [X] Add image handling logic (Apple Music 2000x2000 -> Discogs)
+    [X] Add skip logic for existing _index.md files
+    [X] Update profile source priority (Apple Music -> Discogs -> Wikipedia)
+    [X] Keep existing sanitization and markdown formatting
+[X] Add --regenerate-artist command to force regenerate specific artist
 [ ] Add artist verification during release processing
 [ ] Add function to refresh artist cache
 [ ] Add periodic cleanup of old artist data
@@ -142,7 +143,6 @@ Next Steps:
 [ ] Add retry mechanism for artist data fetching
 [ ] Consider caching artist data separately
 [ ] Add cleanup of processed_artists set periodically
-[ ] Test artists-only regeneration with large collection
 
 ## Lessons Learned
 
@@ -186,6 +186,7 @@ Next Steps:
    - format_track_duration: Formats track durations consistently
    - format_track_list: Creates markdown tables for track listings
    - format_release_formats: Formats release format information
+   - get_best_artist_profile: Formats artist profiles with proper markdown
    - Added proper error handling and logging for API calls
    - Added rate limit and token validation checks
 

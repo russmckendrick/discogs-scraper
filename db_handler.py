@@ -159,16 +159,21 @@ class DatabaseHandler:
 
     def get_all_artists(self):
         """
-        Get all artists from the artists table.
+        Get all artists from the database.
         
         Returns:
-            list: List of tuples (artist_id, name, data)
+            dict: Dictionary of artist_id: artist_data pairs
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT artist_id, name, data FROM artists ORDER BY name')
+            cursor.execute('SELECT artist_id, name, data FROM artists')
             results = cursor.fetchall()
-            return [(row[0], row[1], json.loads(row[2])) for row in results]
+            
+            artists = {}
+            for artist_id, name, data in results:
+                artists[artist_id] = json.loads(data)
+            
+            return artists
 
     def migrate_artists_from_releases(self, discogs_client=None, jwt_apple_music_token=None):
         """

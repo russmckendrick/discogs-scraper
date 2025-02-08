@@ -6,5 +6,5 @@ cryptography
 wikipedia
 PyJWT
 tenacity
-html2text
+html2text==2024.2.26
 streamlit>=1.29.0

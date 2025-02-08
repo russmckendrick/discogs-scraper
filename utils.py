@@ -7,6 +7,13 @@ from difflib import SequenceMatcher
 import os
 import html2text
 
+# Initialize html2text
+h = html2text.HTML2Text()
+h.ignore_links = True
+h.ignore_images = True
+h.ignore_emphasis = True
+h.body_width = 0  # Don't wrap text
+
 def sanitize_slug(text):
     """
     Convert text to a URL-friendly slug.
@@ -218,7 +225,7 @@ def get_best_artist_profile(artist_info):
         
     if profile:
         # Convert to markdown and clean up
-        profile = html2text.handle(profile)
+        profile = h.handle(profile)  # Use the initialized instance
         # Remove multiple newlines
         profile = re.sub(r'\n\s*\n', '\n\n', profile)
         # Remove any remaining HTML
