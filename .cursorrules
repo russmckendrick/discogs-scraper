@@ -18,6 +18,7 @@ Here is some information about the projects files:
 - `collection_cache.db` is the sqlite database that contains the collection cached data.
 - `album_template.md` is a markdown file that contains the template for the album pages.
 - `artist_template.md` is a markdown file that contains the template for the artist pages.
+- `utils.py` is a helper library for the project.
 
 # Instructions
 
@@ -122,8 +123,14 @@ Next Steps:
 [X] Test database schema changes
 [X] Add migration function for artist data
 [X] Fix artist data extraction from releases
-[ ] Run migration and verify data
-[ ] Add function to update all artist pages from cache
+[X] Run migration and verify data
+[X] Remove data deletion from migration script
+[ ] Update artist page generation:
+    [ ] Add image handling logic (Apple Music 2000x2000 -> Discogs)
+    [ ] Add skip logic for existing _index.md files
+    [ ] Update profile source priority (Apple Music -> Discogs -> Wikipedia)
+    [ ] Keep existing sanitization and markdown formatting
+[ ] Add artist verification during release processing
 [ ] Add function to refresh artist cache
 [ ] Add periodic cleanup of old artist data
 [ ] Test artist page generation with various artists
@@ -133,7 +140,6 @@ Next Steps:
 [ ] Consider caching artist data separately
 [ ] Add cleanup of processed_artists set periodically
 [ ] Test artists-only regeneration with large collection
-
 
 ## Lessons Learned
 
@@ -156,4 +162,22 @@ Next Steps:
     - Should separate artist data into its own table
     - Need to cache artist info independently of releases
     - Need to handle artist updates separately
+
+4. Artist Page Generation:
+   - Don't overwrite existing artist images or pages
+   - Use high resolution images from Apple Music (2000x2000)
+   - Maintain consistent image and file naming using slugs
+   - Keep existing text formatting and sanitization
+   - Verify artists exist in cache during release processing
+
+5. Data Safety:
+   - Never include data deletion in migration scripts
+   - Make data deletion a manual process
+   - Add checks before any destructive operations
+
+6. Utils Functions Added:
+   - get_spotify_token: Handles Spotify API authentication
+   - get_spotify_id: Searches for album IDs on Spotify
+   - Added proper error handling and logging for API calls
+   - Added rate limit and token validation checks
 
