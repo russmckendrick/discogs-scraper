@@ -23,6 +23,13 @@ from tqdm import tqdm
 from tenacity import retry, wait_fixed
 from jinja2 import Environment, FileSystemLoader
 from db_handler import DatabaseHandler
+from utils import (
+    get_wikipedia_data, 
+    search_apple_music, 
+    sanitize_slug,
+    get_spotify_token,
+    get_spotify_id
+)
 import re
 
 ####################################################################################################
@@ -43,100 +50,6 @@ LAST_PROCESSED_INDEX_FILE = "last_processed_index.txt" # File to store the last 
 ####################################################################################################
 # Functions
 ####################################################################################################
-
-def get_wikipedia_data(target, keyword):
-    """
-    Retrieves the Wikipedia summary and URL of a given target.
-
-    This function queries the Wikipedia API for the summary and URL of the page corresponding to the provided target.
-    If the target leads to a disambiguation page, if the page does not exist, or if the URL does not contain the 
-    specified keyword, the function returns None for both the summary and the URL.
-
-    Args:
-        target (str): The title of the Wikipedia page to be searched for.
-        keyword (str): The keyword that the URL must contain.
-
-    Returns:
-        tuple: The summary and URL of the Wikipedia page if it exists, is not a disambiguation page, and its URL 
-               contains the specified keyword. Both elements of the tuple are None otherwise.
-    """
-    logging.info(f"Searching Wikipedia for '{target}' with keyword '{keyword}'")
-    
-    def normalize_text(text):
-        """Helper function to normalize text for comparison"""
-        normalized = text.lower().replace("(album)", "").strip()
-        logging.debug(f"Normalized text: '{text}' -> '{normalized}'")
-        return normalized
-
-    def check_url_match(url, search_keyword):
-        """Helper function to check if URL matches the keyword"""
-        normalized_url = normalize_text(url)
-        normalized_keyword = normalize_text(search_keyword)
-        return normalized_keyword in normalized_url
-
-    try:
-        # First try: direct search with (album)
-        try:
-            logging.debug(f"Attempting direct search with '(album)' for: {target}")
-            page = wikipedia.page(target)
-            if check_url_match(page.url, keyword):
-                logging.info(f"Found Wikipedia match: {page.url}")
-                return page.summary, page.url
-        except wikipedia.exceptions.DisambiguationError as e:
-            logging.debug(f"Got disambiguation page for '{target}'. Options: {e.options[:3]}")
-            # If we get a disambiguation error, try the first few options
-            for option in e.options[:3]:
-                try:
-                    option_page = wikipedia.page(option)
-                    if check_url_match(option_page.url, keyword):
-                        return option_page.summary, option_page.url
-                except:
-                    continue
-        except Exception as e:
-            logging.debug(f"Direct search failed for '{target}': {str(e)}")
-
-        # Second try: search without (album)
-        clean_target = target.replace(" (album)", "")
-        try:
-            page = wikipedia.page(clean_target)
-            if check_url_match(page.url, keyword):
-                return page.summary, page.url
-        except wikipedia.exceptions.DisambiguationError as e:
-            # Try the first few disambiguation options
-            for option in e.options[:3]:
-                try:
-                    option_page = wikipedia.page(option)
-                    if check_url_match(option_page.url, keyword):
-                        return option_page.summary, option_page.url
-                except:
-                    continue
-        except:
-            pass
-
-        # Third try: just the album name
-        try:
-            page = wikipedia.page(keyword)
-            if check_url_match(page.url, keyword):
-                return page.summary, page.url
-        except:
-            pass
-
-        # If we get here, log the failure with details at debug level
-        logging.debug(f"Wikipedia match failed for '{target}':")
-        logging.debug(f"  - Tried searches:")
-        logging.debug(f"    1. '{target}'")
-        logging.debug(f"    2. '{clean_target}'")
-        logging.debug(f"    3. '{keyword}'")
-        if 'page' in locals():
-            logging.debug(f"  - Last found URL: {page.url}")
-            logging.debug(f"  - Looking for keyword: '{keyword}'")
-            logging.debug(f"  - Normalized URL: {normalize_text(page.url)}")
-            logging.debug(f"  - Normalized keyword: {normalize_text(keyword)}")
-        return None, None
-
-    except wikipedia.exceptions.PageError as e:
-        logging.warning(f"Wikipedia PageError: No page found for '{target}'")
-        return None, None
 
 def generate_apple_music_token(private_key_path, key_id, team_id):
     """
@@ -294,160 +207,6 @@ def escape_quotes(text):
     text = text.replace('"', '\\"')
     text = re.sub(r'\s\(\d+\)', '', text)  # Remove brackets and numbers inside them
     return text
-
-def sanitize_slug(slug):
-    """
-    Sanitizes a given slug for URL generation.
-    
-    Args:
-        slug (str): The input slug to sanitize.
-        
-    Returns:
-        str: The sanitized slug with non-ASCII characters removed, spaces replaced by hyphens, and special characters removed.
-    """
-    slug = slug.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r'\s\(\d+\)', '', slug)  # Remove brackets and numbers inside them
-    slug = re.sub(r'\W+', ' ', slug)
-    slug = slug.strip().lower().replace(' ', '-').replace('"', '')
-    return slug
-
-def tidy_text(text):
-    """
-    Tidies up text by converting certain tags to markdown and removing anything that doesn't look like markdown.
-    
-    Args:
-        text (str): The input text to tidy up.
-        
-    Returns:
-        str: The tidied up text.
-    """
-    
-    text = text.replace('"', '\\"') # Escape double quotes
-    text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', text)  # Convert certain tags to markdown Bold
-    text = re.sub(r'\[i\](.*?)\[/i\]', r'*\1*', text)  # Convert certain tags to markdown Italic
-    text = re.sub(r'\[(a=[^\]]+)\]', '', text) # Remove artist names that look like '[a...]'
-    text = re.sub(r'\[.*?\]', '', text)  # Remove tags
-    text = re.sub(r'\(.*?\)', '', text)  # Remove parentheses and anything inside them
-    text = re.sub(r'\s{2,}', ' ', text)  # Replace multiple spaces with a single space
-    text = text.strip()  # Remove leading and trailing whitespace
-    
-    return text
-
-def extract_youtube_id(url):
-    """
-    Extracts the YouTube video ID from a given URL.
-
-    Args:
-        url (str): The URL of the YouTube video.
-
-    Returns:
-        str: The extracted YouTube video ID or None if not found.
-    """
-    youtube_id_match = re.search(r'(?<=v=)[^&#]+', url)
-    if youtube_id_match:
-        return youtube_id_match.group(0)
-    return None
-
-def get_spotify_id(artist, album_name, spotify_token):
-    """
-    Gets the Spotify ID of an album given the artist and album name.
-    
-    Args:
-        artist (str): The name of the artist.
-        album_name (str): The name of the album.
-        spotify_token (str): The Spotify API token.
-        
-    Returns:
-        str: The Spotify ID of the album, or None if not found.
-    """
-    if not spotify_token:
-        logging.debug("No Spotify token provided, skipping Spotify lookup")
-        return None
-
-    logging.info(f"Searching Spotify for album: {artist} - {album_name}")
-    
-    url = 'https://api.spotify.com/v1/search'
-    params = {
-        'q': f'artist:{artist} album:{album_name}',
-        'type': 'album',
-        'limit': 1
-    }
-    headers = {
-        'Authorization': f'Bearer {spotify_token}'
-    }
-
-    try:
-        logging.debug(f"Making Spotify API request to: {url}")
-        response = requests.get(url, headers=headers, params=params)
-        
-        if response.status_code == 200:
-            json_response = response.json()
-            if json_response.get('albums', {}).get('items'):
-                spotify_id = json_response['albums']['items'][0]['id']
-                logging.info(f"Found Spotify ID: {spotify_id}")
-                return spotify_id
-            else:
-                logging.warning(f"No Spotify results found for: {artist} - {album_name}")
-                return None
-        else:
-            logging.error(f"Spotify API error {response.status_code}: {response.text}")
-            return None
-
-    except Exception as e:
-        logging.error(f"Error querying Spotify API: {str(e)}")
-        return None
-
-def get_spotify_token(client_id, client_secret):
-    """
-    Gets an access token for the Spotify API using client credentials authentication.
-    
-    Args:
-        client_id (str): Spotify API client ID
-        client_secret (str): Spotify API client secret
-        
-    Returns:
-        str: The access token, or None if not obtained.
-    """
-    logging.info("Requesting Spotify access token")
-    
-    url = 'https://accounts.spotify.com/api/token'
-    headers = {
-        'Authorization': f'Basic {base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()}'
-    }
-    data = {
-        'grant_type': 'client_credentials'
-    }
-
-    try:
-        logging.debug(f"Making Spotify auth request to: {url}")
-        response = requests.post(url, headers=headers, data=data)
-        
-        if response.status_code == 200:
-            token = response.json()['access_token']
-            logging.info("Successfully obtained Spotify access token")
-            return token
-        else:
-            logging.error(f"Failed to get Spotify token. Status code: {response.status_code}")
-            return None
-            
-    except Exception as e:
-        logging.error(f"Error getting Spotify token: {str(e)}")
-        return None
-
-def process_artist(artist_info, processed_artists):
-    """
-    Processes an artist's information and creates a markdown file if the artist hasn't been processed yet.
-
-    Args:
-        artist_info (dict): A dictionary containing the artist's information.
-        processed_artists (set): A set of processed artist IDs to avoid processing the same artist multiple times.
-    """
-    if artist_info is not None:
-        artist_id = artist_info["id"]
-        if artist_id not in processed_artists:
-            create_artist_markdown_file(artist_info)
-            processed_artists.add(artist_id)
-
 
 def format_notes(notes):
     """
@@ -751,8 +510,22 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
 
     try:
         artist_name = release.artists[0].name
-        album_title = release.title
         artist_id = release.artists[0].id
+        
+        # Get and cache artist information
+        cached_artist = db_handler.get_artist(artist_id)
+        if not cached_artist:
+            artist_info = get_artist_info(artist_name, discogs_client)
+            if artist_info:
+                db_handler.save_artist(artist_id, artist_name, artist_info)
+                logging.info(f"Cached new artist information for {artist_name}")
+            else:
+                logging.error(f"Failed to get artist info for {artist_name}")
+        else:
+            artist_info = cached_artist
+            logging.debug(f"Using cached artist information for {artist_name}")
+
+        album_title = release.title
         date_added = item.data['date_added'] if 'date_added' in item.data else None
         genre = release.genres
         style = release.styles
@@ -804,24 +577,6 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
                     logging.debug(f"No Apple Music data found for {artist_name} - {album_title}")
             except Exception as e:
                 logging.error(f"Error fetching Apple Music data: {str(e)}")
-
-        # Get artist information and create artist page
-        artist_info = get_artist_info(artist_name, discogs_client)
-        if artist_info:
-            # Initialize processed_artists set if it doesn't exist
-            if not hasattr(process_item, 'processed_artists'):
-                process_item.processed_artists = set()
-            
-            # Process artist and create artist page
-            process_artist(artist_info, process_item.processed_artists)
-            
-            # Update artist info with Apple Music data if available
-            if apple_music_attributes and 'artistBio' in apple_music_attributes:
-                artist_info["artist_wikipedia_summary"] = apple_music_attributes['artistBio']
-            if apple_music_attributes and 'artistWikipediaUrl' in apple_music_attributes:
-                artist_info["artist_wikipedia_url"] = apple_music_attributes['artistWikipediaUrl']
-        else:
-            logging.error(f"Failed to get artist info for {artist_name}")
 
         # Create item data dictionary
         item_data = {
@@ -903,6 +658,7 @@ def main():
     parser = argparse.ArgumentParser(description='Process Discogs collection and create markdown files.')
     parser.add_argument('--all', action='store_true', help='Process all items in the collection')
     parser.add_argument('--artists-only', action='store_true', help='Regenerate only artist pages')
+    parser.add_argument('--migrate-artists', action='store_true', help='Migrate artist data from releases to artists table')
     parser.add_argument('--delay', type=int, default=DEFAULT_DELAY, help=f'Delay between requests in seconds (default: {DEFAULT_DELAY})')
     args = parser.parse_args()
 
@@ -981,6 +737,16 @@ def main():
             retry_after = int(http_err.headers.get('Retry-After', DELAY))
             logging.error(f"Rate limit hit when getting collection. Retry after {retry_after} seconds")
         raise
+
+    # If migrate-artists flag is set, perform migration
+    if args.migrate_artists:
+        logging.info("Starting artist migration")
+        db_handler.migrate_artists_from_releases(
+            discogs_client=discogs_client,
+            jwt_apple_music_token=jwt_apple_music_token
+        )
+        logging.info("Artist migration complete")
+        return
 
     # If artists-only flag is set, process only artists from the database
     if args.artists_only:

@@ -138,3 +138,25 @@ Next Steps:
    - Separated concerns between different data sources
    - Added token verification to catch authentication issues early
 
+2. Need better artist data management:
+    - Should separate artist data into its own table
+    - Need to cache artist info independently of releases
+    - Need to handle artist updates separately
+
+Changes Made:
+[X] Added artists table to database
+[X] Added functions to save/get artist data
+[X] Modified process_item to cache artist info separately
+[X] Added migration function to populate artists table from releases
+[X] Fixed artist data extraction from releases
+[X] Added better error handling and logging for migration
+
+Next Steps:
+[X] Test database schema changes
+[X] Add migration function for artist data
+[X] Fix artist data extraction from releases
+[ ] Run migration and verify data
+[ ] Add function to update all artist pages from cache
+[ ] Add function to refresh artist cache
+[ ] Add periodic cleanup of old artist data
+
