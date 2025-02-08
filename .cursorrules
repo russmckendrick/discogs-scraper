@@ -36,7 +36,11 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 ## User Specified Lessons
 
 - You have a python venv in ./venv. Use it.
-- Include info useful for debugging in the program output.
+- Include info useful for debugging in the program output:
+  - Use logging levels appropriately (INFO for main operations, DEBUG for details, WARNING for expected issues, ERROR for problems)
+  - Log all API interactions with request details and responses
+  - Include timing information in log format
+  - Store logs in dated files under logs/ directory
 - Read the file before you try to edit it.
 - Due to Cursor's limit, when you use `git` and `gh` and need to submit a multiline commit message, first write the message in a file, and then use `git commit -F <filename>` or similar command to commit. And then remove the file. Include "[Cursor] " in the commit message and PR title.
 
@@ -45,6 +49,13 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 - For search results, ensure proper handling of different character encodings (UTF-8) for international queries
 - Add debug information to stderr while keeping the main output clean in stdout for better pipeline integration
 - When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
+- Comprehensive API logging best practices:
+  - Log all API requests with URLs and parameters
+  - Log response status codes and content for failures
+  - Include search terms and results for matching operations
+  - Track API rate limits and retries
+  - Use consistent log format: timestamp - level - message
+  - Separate logs by date for easier debugging
 
 # Scratchpad
 
@@ -64,6 +75,11 @@ Changes Made:
 [X] Improved error handling and logging
 [X] Separated artist info from Apple Music data
 [X] Added proper attribute checks for Apple Music data
+[X] Added comprehensive logging for all API interactions:
+    - Request details (URLs, parameters)
+    - Response status and content
+    - Search results and matching
+    - Error handling and retries
 
 Next Steps:
 [ ] Test with a few releases to verify fix
