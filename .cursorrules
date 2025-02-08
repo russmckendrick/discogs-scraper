@@ -9,16 +9,19 @@ This is a project to index my discogs collection, placing the data into the `web
 
 Here is some information about the projects files:
 
-- `discogs_scraper.py` is the main program.
-- `collection_editor.py` is a Streamlit poweredweb app to edit the sqlite cache database.
-- `db_handler.py` is a helper library for the database.
-- `website` is the directory for the static website.
-- `backups` is the directory for backups - this should be ignored.
-- `secrets.json` is a file that contains the secrets for the project.
-- `collection_cache.db` is the sqlite database that contains the collection cached data.
+- `.cursorrules` is the file that contains the rules for the project.
 - `album_template.md` is a markdown file that contains the template for the album pages.
 - `artist_template.md` is a markdown file that contains the template for the artist pages.
+- `backups` is the directory for backups - this should be ignored.
+- `collection_cache.db` is the sqlite database that contains the collection cached data.
+- `collection_editor.py` is a Streamlit poweredweb app to edit the sqlite cache database.
+- `db_handler.py` is a helper library for the database.
+- `discogs_scraper.py` is the main program.
+- `README.md` is the readme for the project.
+- `requirements.txt` is the file that contains the dependencies for the project.
+- `secrets.json` is a file that contains the secrets for the project.
 - `utils.py` is a helper library for the project.
+- `website` is the directory for the static website.
 
 # Instructions
 
