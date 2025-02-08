@@ -60,7 +60,6 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 {% for video in additional_videos %}
 - [{{ video.title }}]({{ video.url }}){% endfor %}{% endif -%}
 {% endif %}
-
 ## Release Images
 {% raw %}{{< imageGrid >}}{% endraw %}
 
@@ -77,3 +76,4 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 | Notes | {{ notes|replace('\n', '<br>') }} |
 {% endif -%}
 | Discogs URL    | [{{ artist }} - {{ album_name }}]({{ release_url }}) |
+

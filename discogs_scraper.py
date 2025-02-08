@@ -520,7 +520,7 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         # Get basic release information
         item_data = {
             'Title': release.title,
-            'Album Title': release.title,  # Add this for template compatibility
+            'Album Title': release.title,
             'Artist Name': release.artists[0].name if release.artists else 'Various',
             'Artist Info': {
                 'id': release.artists[0].id,
@@ -530,18 +530,39 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             'Release ID': release_id,
             'Year': release.year,
             'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
+            'Catalog Number': release.labels[0].data.get('catno') if release.labels else '',
+            'Label': release.labels[0].name if release.labels else '',
             'Formats': release.formats,
+            'Release Formats': release.formats,
             'Genres': release.genres,
+            'Genre': release.genres,
             'Styles': release.styles if hasattr(release, 'styles') else [],
+            'Style': release.styles if hasattr(release, 'styles') else [],
             'Notes': release.notes if hasattr(release, 'notes') else '',
-            'Tracklist': [{'position': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist],
-            'Images': [img.get('resource_url') for img in release.images] if hasattr(release, 'images') else [],
+            'Track List': [{'position': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist],
+            'Album Cover URL': release.images[0]['resource_url'] if hasattr(release, 'images') and release.images else None,
+            'All Images URLs': [img['resource_url'] for img in release.images] if hasattr(release, 'images') else [],
             'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
-            'URL': release.url,
+            'Release URL': release.url,
+            'Release Date': release.year,
             'Slug': sanitize_slug(f"{release.title}-{release_id}"),
             'Date Added': item.data.get('date_added'),
-            'Rating': item.data.get('rating', 0)
+            'Rating': item.data.get('rating', 0),
+            'Wikipedia Summary': None,  # Initialize Wikipedia fields
+            'Wikipedia URL': None
         }
+
+        # Get Wikipedia data
+        if item_data['Artist Name'].lower() != 'various':
+            try:
+                wiki_summary, wiki_url = get_wikipedia_data(
+                    f"{item_data['Artist Name']} {item_data['Title']} (album)",
+                    item_data['Title']
+                )
+                item_data['Wikipedia Summary'] = wiki_summary
+                item_data['Wikipedia URL'] = wiki_url
+            except Exception as e:
+                logging.error(f"Error getting Wikipedia data: {str(e)}")
 
         # Get additional data from APIs
         if jwt_apple_music_token and item_data['Artist Name'].lower() != 'various':
@@ -552,12 +573,7 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                     jwt_apple_music_token
                 )
                 if apple_music_data:
-                    item_data['Apple Music Data'] = apple_music_data.get('attributes', {})
-                    # Get high-res artwork URL
-                    artwork = apple_music_data.get('attributes', {}).get('artwork', {})
-                    if artwork:
-                        # Replace w and h with 2000 for high res
-                        item_data['Apple Music Image'] = artwork.get('url', '').replace('{w}', '2000').replace('{h}', '2000')
+                    item_data['Apple Music attributes'] = apple_music_data.get('attributes', {})
             except Exception as e:
                 logging.error(f"Error getting Apple Music data: {str(e)}")
 
@@ -576,21 +592,6 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         # Create the output directory for this release
         release_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
         os.makedirs(release_dir, exist_ok=True)
-
-        # Try to download Apple Music image first, fall back to Discogs
-        image_path = os.path.join(release_dir, f"{item_data['Slug']}.jpg")
-        if item_data.get('Apple Music Image'):
-            logging.info(f"Attempting to download Apple Music image for {item_data['Title']}")
-            try:
-                urlretrieve(item_data['Apple Music Image'], image_path)
-                logging.info(f"Successfully downloaded Apple Music image to {image_path}")
-            except Exception as e:
-                logging.error(f"Failed to download Apple Music image: {str(e)}")
-                # Fall back to Discogs image
-                if item_data['Images']:
-                    download_image(item_data['Images'][0], image_path)
-        elif item_data['Images']:
-            download_image(item_data['Images'][0], image_path)
 
         # Save to database
         logging.info(f"Saving release {release_id} to database")
