@@ -86,6 +86,41 @@ Next Steps:
 [ ] Monitor logs for Apple Music API responses
 [ ] Consider adding retry mechanism for failed Apple Music requests
 
+## Artist Page Generation Fix
+
+Task: Fix artist page generation that stopped working
+
+Findings:
+1. Artist info handling was incorrect:
+   - Wikipedia data wasn't being fetched properly
+   - Image URLs weren't being processed correctly
+   - Profile text selection logic was flawed
+   - Not fetching full artist data from Discogs
+   - Not properly handling missing artist fields
+   - Not properly calling process_artist function
+   - Not maintaining processed artists set
+
+Changes Made:
+[X] Fixed artist info retrieval from Discogs
+[X] Added full artist data fetching using artist ID
+[X] Added fallback for basic artist info if full fetch fails
+[X] Separated Wikipedia data handling for artists
+[X] Improved image URL handling
+[X] Fixed profile/summary text selection
+[X] Added proper error handling and logging
+[X] Added proper artist page generation in process_item
+[X] Added processed artists tracking
+[X] Added --artists-only flag for regenerating just artist pages
+
+Next Steps:
+[ ] Test artist page generation with various artists
+[ ] Verify image downloads are working
+[ ] Check artist template rendering
+[ ] Add retry mechanism for artist data fetching
+[ ] Consider caching artist data separately
+[ ] Add cleanup of processed_artists set periodically
+[ ] Test artists-only regeneration with large collection
+
 ## Lessons Learned
 
 1. API Integration:

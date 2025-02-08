@@ -512,70 +512,53 @@ def format_release_formats(release_formats):
     return ', '.join(formatted_formats)
 
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
+    """
+    Creates a markdown file for an artist.
+    """
     if artist_data is None or 'name' not in artist_data:
         logging.error('Artist data is missing or does not contain the key "name". Skipping artist.')
         return
 
     artist_name = artist_data["name"]
-    slug = artist_data["slug"]
+    slug = sanitize_slug(artist_name)
     folder_path = Path(output_dir) / slug
+
+    # Create the output directory if it doesn't exist
+    folder_path.mkdir(parents=True, exist_ok=True)
+
     image_filename = f"{slug}.jpg"
     image_path = folder_path / image_filename
-
     missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
 
-    # Check for Apple Music image first
-    if "attributes" in artist_data and "artwork" in artist_data["attributes"]:
-        apple_music_image = artist_data["attributes"]["artwork"]
-        width = min(1024, apple_music_image["width"])
-        height = min(1024, apple_music_image["height"])
-        apple_music_image_url = apple_music_image["url"].format(w=width, h=height)
-        download_image(apple_music_image_url, image_path)
-    # If no Apple Music image, check for Discogs image
-    elif artist_data["images"]:
-        artist_image_url = artist_data["images"][0]
+    # Handle artist images
+    if "images" in artist_data and artist_data["images"]:
+        artist_image_url = artist_data["images"][0]['resource_url'] if isinstance(artist_data["images"][0], dict) else artist_data["images"][0]
         download_image(artist_image_url, image_path)
-    # If no Discogs image, use missing cover URL
     else:
         download_image(missing_cover_url, image_path)
 
     # Check if the artist file already exists
     artist_file_path = folder_path / "_index.md"
 
-    # Create the output directory if it doesn't exist
-    folder_path.mkdir(parents=True, exist_ok=True)
-
     # Render markdown file using Jinja2 template
     env = Environment(loader=FileSystemLoader('.'))
     template = env.get_template('artist_template.md')
 
-    if "attributes" in artist_data and "url" in artist_data["attributes"]:
-        some_apple_music_artist_url = artist_data["attributes"]["url"]
-    else:
-        some_apple_music_artist_url = None
+    # Get profile text
+    profile = tidy_text(artist_data.get("profile", ""))
+    wikipedia_summary = tidy_text(artist_data.get("artist_wikipedia_summary", ""))
 
-    # Calculate the lengths of the profile and the wikipedia summary
-    profile = tidy_text(artist_data["profile"]) if artist_data["profile"] else None
-    artist_wikipedia_summary = tidy_text(artist_data['artist_wikipedia_summary']) if artist_data['artist_wikipedia_summary'] else None
-
-    profile_length = len(profile) if profile else 0
-    wikipedia_summary_length = len(artist_wikipedia_summary) if artist_wikipedia_summary else 0
-
-    # Choose the longer one as the summary
-    if profile_length > wikipedia_summary_length:
-        summary = profile
-    else:
-        summary = artist_wikipedia_summary
+    # Choose the longer text as the summary
+    summary = wikipedia_summary if len(wikipedia_summary or "") > len(profile or "") else profile
 
     rendered_content = template.render(
         name=escape_quotes(artist_name),
-        slug=sanitize_slug(artist_data["slug"]),
-        profile=summary,  # use the longer summary
-        aliases=artist_data["aliases"],
-        members=artist_data["members"],
+        slug=slug,
+        profile=summary,
+        aliases=artist_data.get("aliases", []),
+        members=artist_data.get("members", []),
         image=image_filename,
-        apple_music_artist_url=some_apple_music_artist_url,
-        artist_wikipedia_url=artist_data['artist_wikipedia_url'] if artist_data['artist_wikipedia_url'] else 'none'
+        artist_wikipedia_url=artist_data.get('artist_wikipedia_url', '')
     )
 
     # Save the rendered content to the markdown file
@@ -698,13 +681,6 @@ def sanitize_youtube_title(title):
 def get_artist_info(artist_name, discogs_client):
     """
     Get artist information from Discogs API.
-    
-    Args:
-        artist_name (str): Name of the artist to search for
-        discogs_client: Authenticated Discogs client instance
-        
-    Returns:
-        dict: Artist information if found, None otherwise
     """
     # Skip lookup for Various Artists compilations
     if artist_name.lower() == "various":
@@ -712,20 +688,51 @@ def get_artist_info(artist_name, discogs_client):
         
     try:
         # Search for the artist
+        logging.info(f"Searching Discogs for artist: {artist_name}")
         results = discogs_client.search(artist_name, type='artist')
+        
         if results and len(results) > 0:
             artist = results[0]
-            return {
-                'name': artist.name,
-                'profile': artist.data.get('profile', ''),
-                'url': artist.data.get('url', ''),
-                'aliases': artist.data.get('aliases', []),
-                'members': artist.data.get('members', []),
-                'images': artist.data.get('images', []),
-                'slug': artist.data.get('slug', ''),
-                'artist_wikipedia_summary': artist.data.get('artist_wikipedia_summary', ''),
-                'artist_wikipedia_url': artist.data.get('artist_wikipedia_url', '')
-            }
+            
+            # Get the full artist data using the artist ID
+            try:
+                full_artist = discogs_client.artist(artist.id)
+                logging.info(f"Retrieved full artist data for {artist_name} (ID: {artist.id})")
+                
+                # Get Wikipedia data for artist
+                artist_wikipedia_summary, artist_wikipedia_url = get_wikipedia_data(
+                    f"{escape_quotes(artist_name)} (musician)", 
+                    escape_quotes(artist_name)
+                )
+                
+                return {
+                    'id': full_artist.id,
+                    'name': full_artist.name,
+                    'profile': full_artist.profile,
+                    'url': full_artist.url,
+                    'aliases': [alias.name for alias in full_artist.aliases] if hasattr(full_artist, 'aliases') else [],
+                    'members': [member.name for member in full_artist.members] if hasattr(full_artist, 'members') else [],
+                    'images': [img.get('resource_url') for img in full_artist.images] if hasattr(full_artist, 'images') else [],
+                    'slug': sanitize_slug(full_artist.name),
+                    'artist_wikipedia_summary': artist_wikipedia_summary,
+                    'artist_wikipedia_url': artist_wikipedia_url
+                }
+            except Exception as e:
+                logging.error(f"Error getting full artist data: {str(e)}")
+                # Fallback to basic artist info if full data fetch fails
+                return {
+                    'id': artist.id,
+                    'name': artist.name,
+                    'profile': artist.data.get('profile', ''),
+                    'url': artist.data.get('url', ''),
+                    'aliases': [],
+                    'members': [],
+                    'images': [img.get('resource_url') for img in artist.data.get('images', [])],
+                    'slug': sanitize_slug(artist.name),
+                    'artist_wikipedia_summary': artist_wikipedia_summary,
+                    'artist_wikipedia_url': artist_wikipedia_url
+                }
+            
     except Exception as e:
         logging.error(f"Error fetching artist information for {artist_name}: {str(e)}")
     return None
@@ -798,12 +805,25 @@ def process_item(item, db_handler, spotify_token=None, jwt_apple_music_token=Non
             except Exception as e:
                 logging.error(f"Error fetching Apple Music data: {str(e)}")
 
-        # Get artist information
+        # Get artist information and create artist page
         artist_info = get_artist_info(artist_name, discogs_client)
-        artist_info["artist_wikipedia_summary"] = apple_music_attributes['artistBio'] if apple_music_attributes and 'artistBio' in apple_music_attributes else None
-        artist_info["artist_wikipedia_url"] = apple_music_attributes['artistWikipediaUrl'] if apple_music_attributes and 'artistWikipediaUrl' in apple_music_attributes else None
+        if artist_info:
+            # Initialize processed_artists set if it doesn't exist
+            if not hasattr(process_item, 'processed_artists'):
+                process_item.processed_artists = set()
+            
+            # Process artist and create artist page
+            process_artist(artist_info, process_item.processed_artists)
+            
+            # Update artist info with Apple Music data if available
+            if apple_music_attributes and 'artistBio' in apple_music_attributes:
+                artist_info["artist_wikipedia_summary"] = apple_music_attributes['artistBio']
+            if apple_music_attributes and 'artistWikipediaUrl' in apple_music_attributes:
+                artist_info["artist_wikipedia_url"] = apple_music_attributes['artistWikipediaUrl']
+        else:
+            logging.error(f"Failed to get artist info for {artist_name}")
 
-        # Create item data dictionary with Apple Music attributes
+        # Create item data dictionary
         item_data = {
             "Release ID": release_id,
             "Artist Name": artist_name,
@@ -882,6 +902,7 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Process Discogs collection and create markdown files.')
     parser.add_argument('--all', action='store_true', help='Process all items in the collection')
+    parser.add_argument('--artists-only', action='store_true', help='Regenerate only artist pages')
     parser.add_argument('--delay', type=int, default=DEFAULT_DELAY, help=f'Delay between requests in seconds (default: {DEFAULT_DELAY})')
     args = parser.parse_args()
 
@@ -960,6 +981,34 @@ def main():
             retry_after = int(http_err.headers.get('Retry-After', DELAY))
             logging.error(f"Rate limit hit when getting collection. Retry after {retry_after} seconds")
         raise
+
+    # If artists-only flag is set, process only artists from the database
+    if args.artists_only:
+        logging.info("Processing artists only mode")
+        processed_artists = set()
+        
+        # Get all unique artists from the database
+        artists = db_handler.get_all_artists()
+        logging.info(f"Found {len(artists)} unique artists in database")
+        
+        with tqdm(total=len(artists), unit="artist") as progress_bar:
+            for artist_name in artists:
+                try:
+                    artist_info = get_artist_info(artist_name, discogs_client)
+                    if artist_info:
+                        process_artist(artist_info, processed_artists)
+                    progress_bar.update(1)
+                except Exception as e:
+                    logging.error(f"Error processing artist {artist_name}: {str(e)}")
+                    progress_bar.update(1)
+                    continue
+                
+                # Add delay between requests
+                if DELAY > 0:
+                    time.sleep(DELAY)
+        
+        logging.info(f"Finished processing {len(processed_artists)} artists")
+        return
 
     # Initialize processed artists set
     processed_artists = set()

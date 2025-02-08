@@ -99,3 +99,25 @@ class DatabaseHandler:
             cursor.execute('SELECT last_index FROM processed_index WHERE id = 1')
             result = cursor.fetchone()
             return result[0] if result else 0
+
+    def get_all_artists(self):
+        """
+        Get all unique artist names from the database.
+        
+        Returns:
+            list: List of unique artist names
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT json_extract(data, '$.Artist Name') as artist_name 
+                FROM releases 
+                WHERE artist_name IS NOT NULL 
+                AND artist_name != 'Various'
+                ORDER BY artist_name
+            """)
+            artists = [row[0] for row in cursor.fetchall()]
+            return artists
+        except Exception as e:
+            logging.error(f"Error getting artists from database: {str(e)}")
+            return []
