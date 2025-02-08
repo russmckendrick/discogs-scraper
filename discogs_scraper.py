@@ -475,50 +475,15 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         
         logging.info(f"Processing release: {release_id} - {release.title}")
         
-        # Check if we already have this release
-        cached_data = db_handler.get_release(release_id)
-        if cached_data:
-            logging.info(f"Found cached data for release {release_id}, updating artist name")
-            # Update the artist name in cached data
-            artist_name = cached_data.get('Artist Name', cached_data.get('artist_name', ''))
-            sanitized_artist_name = sanitize_artist_name(artist_name)
-            
-            # Update cached data with consistent field names
-            cached_data['Title'] = cached_data.get('Title', cached_data.get('Album Title', ''))
-            cached_data['Artist Name'] = sanitized_artist_name
-            cached_data['Artist Info'] = cached_data.get('Artist Info', {
-                'name': sanitized_artist_name,
-                'slug': sanitize_slug(sanitized_artist_name)
-            })
-            
-            # Save updated data back to database
-            db_handler.save_release(release_id, cached_data)
-            
-            # Regenerate markdown file with updated data
-            logging.info(f"Regenerating markdown file for release {release_id}")
-            create_markdown_file(cached_data)
-            
-            return cached_data
-
-        # Add delay before fetching new data
-        time.sleep(DELAY)
-        
-        logging.info(f"No cache found for release {release_id}, fetching new data")
-        
-        # Get artist name and sanitize it
-        artist_name = release.artists[0].name if release.artists else 'Various'
-        sanitized_artist_name = sanitize_artist_name(artist_name)
-        artist_slug = sanitize_slug(sanitized_artist_name)
-
         # Get basic release information
         item_data = {
             'Title': release.title,
             'Album Title': release.title,
-            'Artist Name': sanitized_artist_name,
+            'Artist Name': sanitize_artist_name(release.artists[0].name) if release.artists else 'Various',
             'Artist Info': {
-                'name': sanitized_artist_name,
-                'slug': artist_slug
-            },
+                'name': sanitize_artist_name(release.artists[0].name),
+                'slug': sanitize_slug(release.artists[0].name)
+            } if release.artists else None,
             'Release ID': release_id,
             'Year': release.year,
             'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
@@ -532,8 +497,8 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             'Style': release.styles if hasattr(release, 'styles') else [],
             'Notes': release.notes if hasattr(release, 'notes') else '',
             'Track List': [{'position': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist],
-            'Album Cover URL': release.images[0]['resource_url'] if hasattr(release, 'images') and release.images else None,
-            'All Images URLs': [img['resource_url'] for img in release.images] if hasattr(release, 'images') else [],
+            'Album Cover URL': None,  # Initialize as None, will set later
+            'All Images URLs': [],  # Initialize as empty list
             'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
             'Release URL': release.url,
             'Release Date': release.year,
@@ -543,6 +508,25 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             'Wikipedia Summary': None,
             'Wikipedia URL': None
         }
+
+        # Try to get Apple Music data first for cover
+        if jwt_apple_music_token:
+            search_query = f"{item_data['Artist Name']} {release.title}"
+            apple_music_data = get_apple_music_data('albums', search_query, jwt_apple_music_token)
+            if apple_music_data and 'artwork' in apple_music_data['attributes']:
+                artwork_url = apple_music_data['attributes']['artwork']['url']
+                # Replace width and height with max resolution
+                artwork_url = artwork_url.replace('{w}', '2000').replace('{h}', '2000')
+                item_data['Album Cover URL'] = artwork_url
+                item_data['All Images URLs'].append(artwork_url)
+                logging.info("Using Apple Music artwork for cover")
+                item_data['Apple Music attributes'] = apple_music_data['attributes']
+
+        # If no Apple Music cover, use Discogs cover
+        if not item_data['Album Cover URL'] and hasattr(release, 'images') and release.images:
+            item_data['Album Cover URL'] = release.images[0]['resource_url']
+            item_data['All Images URLs'].extend([img['resource_url'] for img in release.images])
+            logging.info("Using Discogs artwork for cover")
 
         # Get Wikipedia data
         if item_data['Artist Name'].lower() != 'various':
@@ -556,41 +540,22 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             except Exception as e:
                 logging.error(f"Error getting Wikipedia data: {str(e)}")
 
-        # Get additional data from APIs
-        if jwt_apple_music_token and item_data['Artist Name'].lower() != 'various':
-            try:
-                apple_music_data = get_apple_music_data(
-                    'albums',
-                    f"{item_data['Artist Name']} {item_data['Title']}",
-                    jwt_apple_music_token
-                )
-                if apple_music_data:
-                    item_data['Apple Music attributes'] = apple_music_data.get('attributes', {})
-            except Exception as e:
-                logging.error(f"Error getting Apple Music data: {str(e)}")
-
-        if spotify_token:
-            try:
-                spotify_id = get_spotify_id(
-                    item_data['Artist Name'],
-                    item_data['Title'],
-                    spotify_token
-                )
-                if spotify_id:
-                    item_data['Spotify ID'] = spotify_id
-            except Exception as e:
-                logging.error(f"Error getting Spotify data: {str(e)}")
-
-        # Create the output directory for this release
-        release_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
-        os.makedirs(release_dir, exist_ok=True)
-
-        # Save to database
-        logging.info(f"Saving release {release_id} to database")
-        db_handler.save_release(release_id, item_data)
+        # Create the output directory and download cover image
+        output_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Download cover image if it exists
+        if item_data['Album Cover URL']:
+            cover_filename = os.path.join(output_dir, f"{item_data['Slug']}.jpg")
+            if not os.path.exists(cover_filename):
+                logging.info(f"Downloading cover image from {item_data['Album Cover URL']}")
+                download_image(item_data['Album Cover URL'], cover_filename)
+            else:
+                logging.info(f"Cover image already exists at {cover_filename}")
+        else:
+            logging.warning(f"No cover image found for release {release_id}")
 
         # Create markdown file
-        logging.info(f"Creating markdown file for release {release_id}")
         create_markdown_file(item_data)
 
         return item_data
