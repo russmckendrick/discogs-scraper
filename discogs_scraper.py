@@ -633,8 +633,8 @@ def verify_apple_music_token(token):
     Verify that the Apple Music token is valid by making a test request.
     """
     try:
-        # Try to search for a very common album as a test
-        test_result = get_apple_music_data('albums', 'The Beatles Abbey Road', token)
+        # Try to search for The Beatles (more likely to get official results)
+        test_result = get_apple_music_data('artists', 'The Beatles', token)
         if test_result:
             logging.info("Apple Music token verification successful")
             return True
@@ -771,18 +771,84 @@ def main():
 
     # Add new section for artist regeneration
     if args.regenerate_artist:
-        logging.info(f"Regenerating artist page for: {args.regenerate_artist}")
+        artist_name = args.regenerate_artist
+        logging.info(f"Regenerating artist page for: {artist_name}")
         
         # Get all artists from database
         artists = db_handler.get_all_artists()
         found = False
+        artist_id = None
         
         # Search for artist by name (case insensitive)
-        for artist_id, artist_data in artists.items():
-            if artist_data.get('name', '').lower() == args.regenerate_artist.lower():
+        for aid, artist_data in artists.items():
+            if artist_data.get('name', '').lower() == artist_name.lower():
                 found = True
+                artist_id = aid
                 logging.info(f"Found artist in database: {artist_data['name']}")
+                break
+        
+        if not found:
+            logging.info(f"Artist not found in artists table, checking releases for: {artist_name}")
+            try:
+                # Get all releases from database
+                releases = db_handler.get_all_releases()
                 
+                # Search through releases for the artist
+                for release_data in releases.values():
+                    if release_data.get('Artist Name', '').lower() == artist_name.lower():
+                        artist_info = release_data.get('Artist Info')
+                        if artist_info and 'id' in artist_info:
+                            artist_id = artist_info['id']
+                            found = True
+                            logging.info(f"Found artist in releases: {release_data['Artist Name']} (ID: {artist_id})")
+                            
+                            # Verify and add artist to database
+                            verified_artist = db_handler.verify_artist(
+                                release_data['Artist Name'],
+                                artist_id,
+                                discogs_client
+                            )
+                            
+                            if verified_artist:
+                                logging.info(f"Added artist to database: {release_data['Artist Name']}")
+                                break
+                            else:
+                                logging.error(f"Failed to verify artist from release: {release_data['Artist Name']}")
+                                found = False
+                
+                # If not found in releases, try Discogs search
+                if not found:
+                    logging.info(f"Artist not found in releases, searching Discogs for: {artist_name}")
+                    search_results = discogs_client.search(artist_name, type='artist')
+                    if search_results:
+                        # Get the first result
+                        artist = search_results[0]
+                        artist_id = artist.id
+                        logging.info(f"Found artist on Discogs: {artist.name} (ID: {artist_id})")
+                        
+                        # Verify and add artist to database
+                        verified_artist = db_handler.verify_artist(
+                            artist.name,
+                            artist_id,
+                            discogs_client
+                        )
+                        
+                        if verified_artist:
+                            found = True
+                            logging.info(f"Added artist to database: {artist.name}")
+                        else:
+                            logging.error(f"Failed to verify artist: {artist.name}")
+                    else:
+                        logging.error(f"No results found on Discogs for: {artist_name}")
+                
+            except Exception as e:
+                logging.error(f"Error searching for artist: {str(e)}")
+                logging.exception("Full traceback:")
+        
+        if found and artist_id:
+            # Get artist data
+            artist_data = db_handler.get_artist(artist_id)
+            if artist_data:
                 # Remove existing artist image if it exists
                 artist_slug = artist_data['slug']
                 artist_dir = os.path.join(ARTIST_DIRECTORY, artist_slug)
@@ -810,10 +876,10 @@ def main():
                         logging.info(f"Successfully regenerated artist page for {artist_data['name']}")
                     else:
                         logging.error(f"Failed to regenerate artist page for {artist_data['name']}")
-                break
-        
-        if not found:
-            logging.error(f"Artist not found in database: {args.regenerate_artist}")
+            else:
+                logging.error(f"Failed to get artist data for ID: {artist_id}")
+        else:
+            logging.error(f"Could not find or add artist: {artist_name}")
         
         return
 

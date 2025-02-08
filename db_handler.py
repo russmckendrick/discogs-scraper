@@ -291,7 +291,7 @@ class DatabaseHandler:
             logging.info(f"Artist {artist_name} not in cache, fetching data")
             try:
                 # Get full artist data from Discogs
-                artist = discogs_client.master(artist_id)  # Use master instead of artist
+                artist = discogs_client.artist(artist_id)  # Use artist instead of master
                 
                 # Initialize data structure with sanitized name
                 artist_info = {
@@ -325,48 +325,39 @@ class DatabaseHandler:
         index_file = os.path.join(artist_dir, '_index.md')
         image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
         
-        # Skip if both page and image already exist
-        if os.path.exists(index_file) and os.path.exists(image_path):
-            logging.info(f"Artist page and image already exist for {artist_name}, skipping")
-            return True
-        
         try:
             # Create artist directory
             os.makedirs(artist_dir, exist_ok=True)
             
-            # Get best profile text
-            profile = get_best_artist_profile(artist_info)
-            
-            # Only try to get image if it doesn't exist
+            # Handle image download
             image_filename = None
-            if not os.path.exists(image_path):
-                if artist_info.get('apple_music_image'):
-                    if download_artist_image(artist_info['apple_music_image'], image_path):
-                        image_filename = f"{artist_slug}.jpg"
-                elif artist_info.get('images'):
-                    if download_artist_image(artist_info['images'][0], image_path):
-                        image_filename = f"{artist_slug}.jpg"
+            if artist_info.get('images'):
+                logging.info(f"Attempting to download artist image from {artist_info['images'][0]}")
+                if download_artist_image(artist_info['images'][0], image_path):
+                    image_filename = f"{artist_slug}.jpg"
+                    logging.info(f"Successfully downloaded artist image to {image_path}")
+                else:
+                    logging.error(f"Failed to download artist image from {artist_info['images'][0]}")
             else:
-                image_filename = f"{artist_slug}.jpg"
+                logging.warning(f"No images found for artist {artist_name}")
+            
+            # Generate page content using template
+            with open('artist_template.md', 'r') as f:
+                template = Template(f.read())
                 
-            # Only generate page if it doesn't exist
-            if not os.path.exists(index_file):
-                # Generate page content using template
-                with open('artist_template.md', 'r') as f:
-                    template = Template(f.read())
-                    
-                content = template.render(
-                    title=artist_name,
-                    summary=profile or "",
-                    image=image_filename or "",
-                    apple_music_url=artist_info.get('apple_music_url', ""),
-                    wikipedia_url=artist_info.get('artist_wikipedia_url', ""),
-                    url=artist_info.get('url', "")
-                )
-                
-                # Write page
-                with open(index_file, 'w') as f:
-                    f.write(content)
+            content = template.render(
+                title=artist_name,
+                summary=artist_info.get('profile', ''),
+                slug=artist_slug,
+                image=image_filename or "",
+                apple_music_artist_url=artist_info.get('apple_music_url', ''),
+                wikipedia_url=artist_info.get('artist_wikipedia_url', ''),
+                url=artist_info.get('url', '')
+            )
+            
+            # Write page
+            with open(index_file, 'w') as f:
+                f.write(content)
                 
             return True
             

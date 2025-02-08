@@ -83,7 +83,7 @@ def search_apple_music(query, search_type, token):
     params = {
         'term': query,
         'types': search_type,
-        'limit': 5
+        'limit': 10  # Increased limit to get more results
     }
 
     try:
@@ -92,12 +92,48 @@ def search_apple_music(query, search_type, token):
             data = response.json()
             if search_type in data['results'] and data['results'][search_type]['data']:
                 results = data['results'][search_type]['data']
-                best_match = max(results, key=lambda x: SequenceMatcher(None, query.lower(), x['attributes']['name'].lower()).ratio())
-                return best_match
+                
+                # Log all results for debugging
+                for result in results:
+                    logging.debug(f"Found result: {result['attributes'].get('name')} by {result['attributes'].get('artistName', 'Unknown')}")
+                
+                # Filter out tribute/cover versions
+                filtered_results = [
+                    r for r in results 
+                    if not any(x in r['attributes'].get('name', '').lower() for x in 
+                             ['tribute', 'cover', 'karaoke', 'performed by', 'in the style of'])
+                ]
+                
+                if filtered_results:
+                    # Use exact match first
+                    exact_matches = [
+                        r for r in filtered_results
+                        if r['attributes'].get('name', '').lower() == query.lower()
+                    ]
+                    
+                    if exact_matches:
+                        best_match = exact_matches[0]
+                    else:
+                        # Use string similarity as fallback
+                        best_match = max(
+                            filtered_results,
+                            key=lambda x: SequenceMatcher(
+                                None,
+                                query.lower(),
+                                x['attributes'].get('name', '').lower()
+                            ).ratio()
+                        )
+                    
+                    logging.info(f"Selected best match: {best_match['attributes'].get('name')} by {best_match['attributes'].get('artistName', 'Unknown')}")
+                    return best_match
+                else:
+                    logging.warning(f"No valid matches found after filtering tributes/covers")
+                    return None
+                    
         return None
     except Exception as e:
         logging.error(f"Apple Music API error: {str(e)}")
-        return None 
+        return None
 
 def get_spotify_token(client_id, client_secret):
     """
@@ -185,30 +221,47 @@ def get_spotify_id(artist, album_name, spotify_token):
         logging.error(f"Error querying Spotify API: {str(e)}")
         return None 
 
-def download_artist_image(url, output_path, size='2000x2000'):
+def download_artist_image(url, filename):
     """
-    Downloads artist image, converting Apple Music URL to desired size if needed.
-    Returns True if successful, False otherwise.
+    Downloads an artist image from a URL.
+    
+    Args:
+        url (str): The URL of the image to download
+        filename (str): The path where to save the image
+        
+    Returns:
+        bool: True if successful, False otherwise
     """
-    if os.path.exists(output_path):
-        logging.info(f"Artist image already exists at {output_path}")
+    try:
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        
+        # Set proper headers for Discogs
+        headers = {
+            'User-Agent': 'DiscogsScraperApp/1.0 +https://github.com/russmckendrick/discogs-scraper',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.discogs.com/'
+        }
+        
+        # Download the image
+        logging.info(f"Downloading artist image to {filename}")
+        response = requests.get(url, headers=headers, stream=True)
+        response.raise_for_status()
+        
+        # Save the image
+        with open(filename, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    
+        logging.info(f"Successfully downloaded artist image to {filename}")
         return True
         
-    try:
-        if 'mzstatic.com' in url:
-            # Replace {w}x{h} with desired size for Apple Music URLs
-            url = url.replace('{w}x{h}', size)
-        
-        logging.info(f"Downloading artist image from {url}")
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            return True
     except Exception as e:
-        logging.error(f"Error downloading artist image: {str(e)}")
-    return False
+        logging.error(f"Error downloading artist image from {url}: {str(e)}")
+        return False
 
 def get_best_artist_profile(artist_info):
     """
