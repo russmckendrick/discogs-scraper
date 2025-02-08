@@ -22,8 +22,45 @@ def sanitize_slug(text):
     # Remove numbers in parentheses at end of name
     text = re.sub(r'\s*\(\d+\)\s*$', '', text)
     
-    # Convert to lowercase
+    # Convert to lowercase and replace special characters
     slug = text.lower()
+    
+    # Handle special character replacements
+    replacements = {
+        'ö': 'o',
+        'ä': 'a',
+        'ü': 'u',
+        'ß': 'ss',
+        'æ': 'ae',
+        'ø': 'o',
+        'å': 'a',
+        'é': 'e',
+        'è': 'e',
+        'ê': 'e',
+        'ë': 'e',
+        'á': 'a',
+        'à': 'a',
+        'â': 'a',
+        'ã': 'a',
+        'ñ': 'n',
+        'ó': 'o',
+        'ò': 'o',
+        'ô': 'o',
+        'õ': 'o',
+        'í': 'i',
+        'ì': 'i',
+        'î': 'i',
+        'ï': 'i',
+        'ú': 'u',
+        'ù': 'u',
+        'û': 'u',
+        'ý': 'y',
+        'ÿ': 'y',
+        'ç': 'c'
+    }
+    
+    for char, replacement in replacements.items():
+        slug = slug.replace(char, replacement)
     
     # Replace spaces and special characters with hyphens
     slug = re.sub(r'[^a-z0-9]+', '-', slug)
@@ -306,10 +343,21 @@ def get_best_artist_profile(artist_info):
 def sanitize_artist_name(name):
     """
     Sanitizes artist name by removing numbers in brackets etc.
+    Preserves special characters in the name.
     """
-    # Remove numbers in brackets at end of name
-    name = re.sub(r'\s*\(\d+\)\s*$', '', name)
-    return name.strip() 
+    if not name:
+        return ''
+        
+    # Remove numbers in brackets/parentheses at end of name
+    name = re.sub(r'\s*[\(\[]\d+[\)\]]\s*$', '', name)
+    
+    # Remove Discogs ID format (name-number)
+    name = re.sub(r'-\d+$', '', name)
+    
+    # Remove any other trailing numbers
+    name = re.sub(r'\s+\d+$', '', name)
+    
+    return name.strip()
 
 def extract_youtube_id(url):
     """

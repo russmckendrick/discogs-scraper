@@ -27,6 +27,7 @@ from utils import (
     get_wikipedia_data, 
     search_apple_music, 
     sanitize_slug,
+    sanitize_artist_name,
     get_spotify_token,
     get_spotify_id,
     extract_youtube_id,
@@ -330,99 +331,64 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
         f.write(rendered_content)
     logging.info(f"Saved artist file {artist_file_path}")
 
-def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY)):
-    """
-    Creates a markdown file for the given album data and saves it in the output directory.
-
-    Args:
-        item_data (dict): The data for the album.
-        output_dir (str or Path): The directory to save the markdown file in.
-
-    Returns:
-        None
-    """
-    artist = item_data["Artist Name"]
-    album_name = item_data["Album Title"]
-    release_id = str(item_data["Release ID"])
-    cover_url = item_data["Album Cover URL"]
-    slug = item_data["Slug"]
-    folder_path = Path(output_dir) / slug
-
-    # Create the output directory if it doesn't exist
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-    # Download album cover and other images
-    cover_filename = f"{slug}.jpg"
-    cover_path = folder_path / cover_filename
-
-    # Check for Apple Music cover first
-    if "Apple Music attributes" in item_data and "artwork" in item_data["Apple Music attributes"]:
-        apple_music_cover = item_data["Apple Music attributes"]["artwork"]
-        width = min(1024, apple_music_cover["width"])
-        height = min(1024, apple_music_cover["height"])
-        apple_music_cover_url = apple_music_cover["url"].format(w=width, h=height)
-        download_image(apple_music_cover_url, cover_path)
-    elif cover_url:
-        download_image(cover_url, cover_path)
-    else:
-        missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
-        download_image(missing_cover_url, cover_path)
-
-    # Store all image URLs
-    image_urls = []
-    if item_data.get("All Images URLs"):  # This will return None if "All Images URLs" does not exist
-        for i, url in enumerate(item_data["All Images URLs"]):
-            image_urls.append(url)
-
-    # Render markdown file using Jinja2 template
-    env = Environment(loader=FileSystemLoader('.'))
-    template = env.get_template('album_template.md')
-    genres = item_data.get("Genre", [])
-    styles = item_data.get("Style", [])
-    videos = item_data["Videos"]
-    wikipedia_summary = item_data["Wikipedia Summary"]
-    wikipedia_url = item_data["Wikipedia URL"]
-    first_video = videos[0] if videos else None
-    additional_videos = [video for video in videos[1:]] if videos and len(videos) > 1 else None
-    if "Apple Music attributes" in item_data and "editorialNotes" in item_data["Apple Music attributes"] and item_data["Apple Music attributes"]["editorialNotes"] and "standard" in item_data["Apple Music attributes"]["editorialNotes"]:
-        some_apple_music_editorialNotes = item_data["Apple Music attributes"]["editorialNotes"]["standard"]
-    else:
-        some_apple_music_editorialNotes = None
-
-    rendered_content = template.render(
-        title="{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
-        artist=escape_quotes(artist),
-        artist_slug=sanitize_slug(f"{artist}"),
-        album_name=album_name,
-        date_added=datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-        release_id=release_id,
-        slug=slug,
-        cover_filename=cover_filename,
-        genres=genres,
-        styles=styles,
-        track_list=format_tracklist(item_data["Track List"]),
-        first_video_id=extract_youtube_id(first_video["url"]) if first_video else None,
-        first_video_title=sanitize_youtube_title(first_video["title"]) if first_video else None,
-        additional_videos=[{**video, "title": sanitize_youtube_title(video["title"])} for video in additional_videos] if additional_videos else None,
-        release_date=item_data["Release Date"],
-        release_url=item_data["Release URL"],
-        label=item_data["Label"],
-        release_formats=format_release_formats(item_data["Release Formats"]),
-        catalog_number=item_data["Catalog Number"],
-        notes=format_notes(item_data["Notes"]),
-        spotify=item_data["Spotify ID"],
-        apple_music_album_url = item_data["Apple Music attributes"]["url"] if "Apple Music attributes" in item_data and "url" in item_data["Apple Music attributes"] else None,
-        apple_music_editorialNotes = some_apple_music_editorialNotes,
-        apple_music_album_release_date = item_data["Apple Music attributes"]["releaseDate"] if "Apple Music attributes" in item_data and "releaseDate" in item_data["Apple Music attributes"] else None,
-        wikipedia_summary = wikipedia_summary,
-        wikipedia_url = wikipedia_url,
-        image_urls=image_urls,
-    )
-
-    # Save the rendered content to the markdown file
-    with open(folder_path / "index.md", "w") as f:
-        f.write(rendered_content)
-    logging.info(f"Saved/Updated file {folder_path}.index.md")
+def create_markdown_file(item_data):
+    """Create a markdown file for a release."""
+    try:
+        # Create output directory if it doesn't exist
+        output_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Get the basic info
+        artist = item_data["Artist Name"]
+        album_name = item_data["Album Title"]
+        release_id = str(item_data["Release ID"])
+        slug = item_data["Slug"]
+        
+        # Prepare template variables exactly as in original
+        template_vars = {
+            'title': "{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
+            'artist': escape_quotes(artist),
+            'artist_slug': sanitize_slug(f"{artist}"),
+            'album_name': album_name,
+            'date_added': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            'release_id': release_id,
+            'slug': slug,
+            'cover_filename': f"{slug}.jpg",
+            'genres': item_data.get('Genre', []),
+            'styles': item_data.get('Style', []),
+            'track_list': format_track_list(item_data.get('Track List', [])),
+            'release_date': item_data.get('Release Date', ''),
+            'release_url': item_data.get('Release URL', ''),
+            'label': item_data.get('Label', ''),
+            'release_formats': format_release_formats(item_data.get('Release Formats', [])),
+            'catalog_number': item_data.get('Catalog Number', ''),
+            'notes': item_data.get('Notes', ''),
+            'spotify': item_data.get('Spotify ID', ''),
+            'apple_music_album_url': item_data.get('Apple Music attributes', {}).get('url', ''),
+            'apple_music_editorialNotes': item_data.get('Apple Music attributes', {}).get('editorialNotes', {}).get('standard', ''),
+            'apple_music_album_release_date': item_data.get('Apple Music attributes', {}).get('releaseDate', ''),
+            'wikipedia_summary': item_data.get('Wikipedia Summary', ''),
+            'wikipedia_url': item_data.get('Wikipedia URL', ''),
+            'image_urls': item_data.get('All Images URLs', [])
+        }
+        
+        # Render markdown file using Jinja2 template
+        env = Environment(loader=FileSystemLoader('.'))
+        template = env.get_template('album_template.md')
+        rendered_content = template.render(**template_vars)
+        
+        # Save the rendered content to the markdown file
+        output_file = os.path.join(output_dir, 'index.md')
+        with open(output_file, 'w') as f:
+            f.write(rendered_content)
+            
+        logging.info(f"Created markdown file for {album_name}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error creating markdown file: {str(e)}")
+        logging.exception("Full traceback:")
+        return False
 
 def sanitize_youtube_title(title):
     """
@@ -512,21 +478,47 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         # Check if we already have this release
         cached_data = db_handler.get_release(release_id)
         if cached_data:
-            logging.info(f"Using cached data for release {release_id}")
+            logging.info(f"Found cached data for release {release_id}, updating artist name")
+            # Update the artist name in cached data
+            artist_name = cached_data.get('Artist Name', cached_data.get('artist_name', ''))
+            sanitized_artist_name = sanitize_artist_name(artist_name)
+            
+            # Update cached data with consistent field names
+            cached_data['Title'] = cached_data.get('Title', cached_data.get('Album Title', ''))
+            cached_data['Artist Name'] = sanitized_artist_name
+            cached_data['Artist Info'] = cached_data.get('Artist Info', {
+                'name': sanitized_artist_name,
+                'slug': sanitize_slug(sanitized_artist_name)
+            })
+            
+            # Save updated data back to database
+            db_handler.save_release(release_id, cached_data)
+            
+            # Regenerate markdown file with updated data
+            logging.info(f"Regenerating markdown file for release {release_id}")
+            create_markdown_file(cached_data)
+            
             return cached_data
 
+        # Add delay before fetching new data
+        time.sleep(DELAY)
+        
         logging.info(f"No cache found for release {release_id}, fetching new data")
+        
+        # Get artist name and sanitize it
+        artist_name = release.artists[0].name if release.artists else 'Various'
+        sanitized_artist_name = sanitize_artist_name(artist_name)
+        artist_slug = sanitize_slug(sanitized_artist_name)
 
         # Get basic release information
         item_data = {
             'Title': release.title,
             'Album Title': release.title,
-            'Artist Name': release.artists[0].name if release.artists else 'Various',
+            'Artist Name': sanitized_artist_name,
             'Artist Info': {
-                'id': release.artists[0].id,
-                'name': release.artists[0].name,
-                'url': release.artists[0].url
-            } if release.artists else None,
+                'name': sanitized_artist_name,
+                'slug': artist_slug
+            },
             'Release ID': release_id,
             'Year': release.year,
             'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
@@ -548,7 +540,7 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             'Slug': sanitize_slug(f"{release.title}-{release_id}"),
             'Date Added': item.data.get('date_added'),
             'Rating': item.data.get('rating', 0),
-            'Wikipedia Summary': None,  # Initialize Wikipedia fields
+            'Wikipedia Summary': None,
             'Wikipedia URL': None
         }
 
@@ -697,17 +689,32 @@ def main():
     # Initialize Discogs client and get collection
     discogs_client = Client('DiscogsScraperApp/1.0', user_token=discogs_access_token)
     
-    # Monkey patch the _get method to add logging
+    # Set up rate limiting
+    RATE_LIMIT_DELAY = 2  # seconds between requests
+    last_request_time = 0
+    
+    def rate_limited_request():
+        nonlocal last_request_time
+        now = time.time()
+        if now - last_request_time < RATE_LIMIT_DELAY:
+            time.sleep(RATE_LIMIT_DELAY - (now - last_request_time))
+        last_request_time = time.time()
+    
+    # Monkey patch the _get method to add rate limiting
     original_get = discogs_client._get
-    def logged_get(url):
+    def rate_limited_get(url):
+        rate_limited_request()
         logging.info(f"Making Discogs API request to: {url}")
         try:
-            time.sleep(DELAY)  # Add delay before each request
             return original_get(url)
-        except Exception as e:
-            logging.error(f"Error making request to {url}: {str(e)}")
+        except discogs_client.exceptions.HTTPError as e:
+            if e.status_code == 429:  # Rate limit hit
+                retry_after = int(e.response.headers.get('Retry-After', RATE_LIMIT_DELAY))
+                logging.warning(f"Rate limit hit, waiting {retry_after} seconds")
+                time.sleep(retry_after)
+                return original_get(url)
             raise
-    discogs_client._get = logged_get
+    discogs_client._get = rate_limited_get
 
     try:
         # Get user's collection
@@ -814,7 +821,7 @@ def main():
                                 break
                             else:
                                 logging.error(f"Failed to verify artist from release: {release_data['Artist Name']}")
-                                found = False
+                            found = False
                 
                 # If not found in releases, try Discogs search
                 if not found:
