@@ -228,33 +228,6 @@ def format_notes(notes):
         return ""
     return notes.replace('\n', ' ').replace('\r', ' ')
 
-def format_release_formats(release_formats):
-    """
-    Formats the release formats as a comma-separated string.
-
-    Args:
-        release_formats (list): A list of dictionaries containing release format information.
-
-    Returns:
-        str: The formatted release formats as a string.
-    """
-    formatted_formats = []
-    
-    for fmt in release_formats:
-        format_details = [fmt['name']]
-        if 'qty' in fmt and fmt['qty'] != '1':
-            format_details.append(f"{fmt['qty']}×")
-        
-        if 'descriptions' in fmt:
-            format_details.extend(fmt['descriptions'])
-        
-        if 'text' in fmt:
-            format_details.append(f"({fmt['text']})")
-        
-        formatted_formats.append(' '.join(format_details))
-
-    return ', '.join(formatted_formats)
-
 def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
     """
     Creates a markdown file for an artist.

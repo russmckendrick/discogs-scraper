@@ -100,9 +100,9 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 # Scratchpad
 
 ## TODO Tasks
-- [ ] **Merge duplicate functions:**  
+- [X] **Merge duplicate functions:**  
       Remove `format_tracklist()` from `discogs_scraper.py` and update the code to use `format_track_list()` from `utils.py`.
-- [ ] **Unify release format formatting:**  
+- [X] **Unify release format formatting:**  
       Remove the duplicate `format_release_formats()` from `discogs_scraper.py` and consolidate functionality to use the version from `utils.py`.
 - [ ] **Centralize image downloading:**  
       Merge `download_image()` in `discogs_scraper.py` and `download_artist_image()` in `utils.py` into a single, generic image download function in `utils.py`, with optional headers as needed.
