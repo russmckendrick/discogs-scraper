@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Artists - Vinyl Collection Manager{% endblock %}
+{% block content %}
+  <h1 class="mb-4">Artists</h1>
+  
+  <form class="row g-3 mb-4" method="GET" action="{{ url_for('artists') }}">
+    <div class="col-auto">
+      <input type="text" class="form-control" name="q" placeholder="Search by Artist Name" value="{{ request.args.get('q', '') }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+  </form>
+  
+  <table class="table table-striped">
+    {% if args.debug_data %}
+    <!-- Debug: Show first artist data -->
+    {% if artists %}
+    <tr>
+      <td colspan="4">
+        <details>
+          <summary>Debug: First Artist Data</summary>
+          <pre>{{ artists[0] | tojson(indent=2) }}</pre>
+        </details>
+      </td>
+    </tr>
+    {% endif %}
+    {% endif %}
+    <thead>
+      <tr>
+        <th scope="col">Artist ID</th>
+        <th scope="col">Name</th>
+        <th scope="col">Slug</th>
+        <th scope="col">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for artist in artists %}
+      <tr>
+        <td>{{ artist.get("id") }}</td>
+        <td>{{ artist.get("name", "N/A") }}</td>
+        <td>{{ artist.get("slug", "N/A") }}</td>
+        <td>
+          <a href="{{ url_for('artist_detail', artist_id=artist.get('id')) }}" class="btn btn-sm btn-info">View/Edit</a>
+          <form action="{{ url_for('delete_artist', artist_id=artist.get('id')) }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this artist?');">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %} 

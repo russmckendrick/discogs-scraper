@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Artist Details - Vinyl Collection Manager{% endblock %}
+{% block content %}
+  <h1 class="mb-4">Artist Details</h1>
+  
+  <form method="POST">
+    <div class="mb-3">
+      <label for="artist_json" class="form-label">Artist Data (JSON)</label>
+      <textarea class="form-control" name="artist_json" rows="20">{{ artist|default('{}') }}</textarea>
+      <div class="form-text">Edit the JSON record directly. (Ensure valid JSON!)</div>
+    </div>
+    
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{{ url_for('artists') }}" class="btn btn-secondary">Back to List</a>
+  </form>
+  
+  <hr>
+  <h3>Preview</h3>
+  {% set data = artist|safe|load_json %}
+  {% if data.get("image_url") %}
+    <img src="{{ data.get('image_url') }}" alt="Artist Image" class="img-fluid mb-3">
+  {% endif %}
+  
+  <pre>{{ data | tojson(indent=2) }}</pre>
+{% endblock %} 

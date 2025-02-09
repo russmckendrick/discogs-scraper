@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import logging
 import argparse
+from urllib.parse import unquote
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from db_handler import DatabaseHandler
@@ -176,6 +177,61 @@ def delete_release(release_id):
         logger.error(f"Error deleting release {release_id}: {str(e)}")
         flash(f"Error deleting release {release_id}: {str(e)}", "danger")
     return redirect(url_for("index"))
+
+@app.route("/artists")
+def artists():
+    # Get all artists from the database
+    all_artists = db.get_all_artists()
+    
+    if args.debug_data:
+        logger.info(f"Raw artists type: {type(all_artists)}")
+        if all_artists:
+            logger.info(f"First artist: {json.dumps(next(iter(all_artists)) if isinstance(all_artists, (list, set, dict)) else all_artists, indent=2)}")
+    
+    # Convert to list if not already
+    if not isinstance(all_artists, list):
+        all_artists = list(all_artists)
+    
+    # Process artists to ensure we have complete data
+    processed_artists = []
+    for artist in all_artists:
+        if isinstance(artist, dict):
+            processed_artists.append(artist)
+        elif isinstance(artist, int):
+            # If we only got an ID, fetch the full artist data
+            artist_data = db.get_artist(artist)
+            if artist_data:
+                processed_artists.append(artist_data)
+            else:
+                processed_artists.append({"id": artist})
+    
+    # Sort by artist name
+    processed_artists.sort(key=lambda x: x.get("name", "").lower())
+    
+    return render_template("artists.html", artists=processed_artists, args=args)
+
+@app.route("/artist/<int:artist_id>")
+def artist_detail(artist_id):
+    artist = db.get_artist(artist_id)
+    if not artist:
+        flash(f"No artist found with ID {artist_id}.", "warning")
+        return redirect(url_for("artists"))
+    
+    # Pretty-format JSON for the textarea
+    artist_pretty = json.dumps(artist, indent=4, ensure_ascii=False)
+    return render_template("artist_detail.html", artist=artist_pretty, artist_id=artist_id)
+
+@app.route("/artist/<int:artist_id>/delete", methods=["POST"])
+def delete_artist(artist_id):
+    try:
+        # Implement deletion (you might need to add this method to DatabaseHandler)
+        db.delete_artist(artist_id)
+        logger.info(f"Deleted artist {artist_id}")
+        flash(f"Artist {artist_id} deleted successfully.", "success")
+    except Exception as e:
+        logger.error(f"Error deleting artist {artist_id}: {str(e)}")
+        flash(f"Error deleting artist {artist_id}: {str(e)}", "danger")
+    return redirect(url_for("artists"))
 
 if __name__ == "__main__":
     # Run the Flask development server locally.
