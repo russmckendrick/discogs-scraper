@@ -427,29 +427,27 @@ def format_track_duration(duration):
     except:
         return duration
 
-def format_track_list(tracks):
-    """
-    Formats track list into markdown table.
+def format_track_list(tracklist):
+    """Formats track list into markdown table.
     
     Args:
-        tracks (list): List of track dictionaries
+        tracklist (list): List of track dictionaries
         
     Returns:
         str: Markdown formatted track list table
     """
-    if not tracks:
+    if not tracklist:
         return ''
         
     # Start table with headers
-    table = "| Position | Title | Duration |\n"
-    table += "|----------|-------|----------|\n"
+    table = "| Position | Title |\n"
+    table += "|----------|--------|\n"
     
     # Add each track
-    for track in tracks:
-        position = track.get('number', '')
-        title = track.get('title', '')
-        duration = format_track_duration(track.get('duration', ''))
-        table += f"| {position} | {title} | {duration} |\n"
+    for track in tracklist:
+        position = track.position if hasattr(track, 'position') else ''
+        title = track.title if hasattr(track, 'title') else ''
+        table += f"| {position} | {title} |\n"
         
     return table
 

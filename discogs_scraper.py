@@ -229,12 +229,12 @@ def format_notes(notes):
     return notes.replace('\n', ' ').replace('\r', ' ')
 
 def format_tracklist(tracklist):
-    """Formats the tracklist as a string with each track title on a separate line.
+    """Formats the tracklist as a markdown table with position and title.
     
     Args:
         tracklist (list): A list of dictionaries containing track information.
     Returns:
-        str: The formatted tracklist as a string.
+        str: The formatted tracklist as a markdown table.
     """
     formatted_tracklist = []
     for track in tracklist:
@@ -243,7 +243,7 @@ def format_tracklist(tracklist):
         formatted_tracklist.append(f"| {position} | {title} |")
     
     # Add header and separator
-    header = "| Position | Title |"
+    header = "## Tracklisting\n| Position | Title |"
     separator = "|----------|--------|"
     
     return "\n".join([header, separator] + formatted_tracklist)
@@ -356,7 +356,13 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
         release_id = str(item_data["Release ID"])
         slug = item_data["Slug"]
         
-        # Prepare template variables exactly as in original
+        # Store all image URLs
+        image_urls = []
+        if item_data.get("All Images URLs"):
+            for url in item_data["All Images URLs"]:
+                image_urls.append(url)
+
+        # Prepare template variables
         template_vars = {
             'title': "{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
             'artist': escape_quotes(artist),
@@ -381,7 +387,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
             'apple_music_album_release_date': item_data.get('Apple Music attributes', {}).get('releaseDate', ''),
             'wikipedia_summary': item_data.get('Wikipedia Summary', ''),
             'wikipedia_url': item_data.get('Wikipedia URL', ''),
-            'image_urls': item_data.get('All Images URLs', [])
+            'additional_images': image_urls,  # Pass all image URLs
         }
         
         # Render markdown file using Jinja2 template
@@ -478,23 +484,36 @@ def get_artist_info(artist_name, discogs_client):
         logging.error(f"Error fetching artist information for {artist_name}: {str(e)}")
     return None
 
-def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=None, processed_artists=None):
+def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=None, processed_artists=None, force_overwrite=False):
     """Process a single item from the collection."""
     try:
         release_id = item.release.id
-        release = item.release
         
-        logging.info(f"Processing release: {release_id} - {release.title}")
+        logging.info(f"Processing release: {release_id} - {item.release.title}")
         
         # Check if we already have this release
         cached_data = db_handler.get_release(release_id)
         if cached_data:
             logging.info(f"Found cached data for release {release_id}")
+            # Create track objects from cached data
+            class Track:
+                def __init__(self, position, title):
+                    self.position = position
+                    self.title = title
+            
+            cached_data['Track List'] = [
+                Track(
+                    t.get('position', t.get('number', '')),  # Try position first, then number
+                    t.get('title', '')
+                ) 
+                for t in cached_data['Track List']
+            ]
             item_data = cached_data
         else:
             # Add delay before fetching new data
             time.sleep(DELAY)
             logging.info(f"No cache found for release {release_id}, fetching new data")
+            release = item.release
             
             # Get basic release information
             item_data = {
@@ -513,9 +532,9 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                 'Styles': release.styles if hasattr(release, 'styles') else [],
                 'Style': release.styles if hasattr(release, 'styles') else [],
                 'Notes': release.notes if hasattr(release, 'notes') else '',
-                'Track List': [{'position': track.position, 'title': track.title} for track in release.tracklist],
+                'Track List': release.tracklist,
                 'Album Cover URL': release.images[0]['resource_url'] if hasattr(release, 'images') and release.images else None,
-                'All Images URLs': [img['resource_url'] for img in release.images] if hasattr(release, 'images') else [],
+                'All Images URLs': [img['resource_url'] for img in release.images] if hasattr(release, 'images') and release.images else [],
                 'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
                 'Release URL': release.url,
                 'Release Date': release.year,
@@ -525,8 +544,15 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             }
 
             # Save to database
+            db_data = item_data.copy()
+            # Convert tracklist to simple dict for storage - store both position and number
+            db_data['Track List'] = [{
+                'position': t.position,
+                'number': t.position,  # Store as both for backwards compatibility
+                'title': t.title
+            } for t in release.tracklist]
             logging.info(f"Saving release {release_id} to database")
-            db_handler.save_release(release_id, item_data)
+            db_handler.save_release(release_id, db_data)
 
         # Check for album cover
         release_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
@@ -584,7 +610,7 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
 
         # Create markdown file
         logging.info(f"Creating markdown file for release {release_id}")
-        create_markdown_file(item_data, force_overwrite=args.overwrite_album)
+        create_markdown_file(item_data, force_overwrite=force_overwrite)
 
         return item_data
 
@@ -915,12 +941,11 @@ def main():
                     db_handler, 
                     jwt_apple_music_token=jwt_apple_music_token,
                     spotify_token=spotify_token,
-                    processed_artists=processed_artists
+                    processed_artists=processed_artists,
+                    force_overwrite=args.overwrite_album
                 )
 
                 if item_data:
-                    # Create markdown file with overwrite flag
-                    create_markdown_file(item_data, force_overwrite=args.overwrite_album)
                     logging.info(f"Successfully processed release: {item_data.get('Title', 'Unknown Title')}")
                 else:
                     logging.warning(f"Failed to process release {item.release.id}: {item.release.title}")
