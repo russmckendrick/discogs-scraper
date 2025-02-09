@@ -162,16 +162,15 @@ def get_apple_music_data(search_type, query, token):
         logging.error(f"Error querying Apple Music API: {str(e)}")
         return None
 
-@retry(wait=wait_fixed(60))  # Adjust this value as needed
-def download_image(url, filename, retries=5, delay=15):
+def download_image(url, filename, retries=3, delay=5):
     """
-    Downloads an image from Apple Music, but only tracks Discogs images for manual download.
+    Downloads an image from the given URL.
     
     Args:
         url (str): The URL of the image to download.
         filename (str): The path and name of the file to save the image to.
-        retries (int, optional): Number of retries for Apple Music downloads. Defaults to 5.
-        delay (int, optional): Delay between retries in seconds. Defaults to 15.
+        retries (int, optional): Number of retries for downloads. Defaults to 3.
+        delay (int, optional): Delay between retries in seconds. Defaults to 5.
     """
     folder_path = Path(filename).parent
     folder_path.mkdir(parents=True, exist_ok=True)
@@ -180,25 +179,26 @@ def download_image(url, filename, retries=5, delay=15):
         logging.info(f"Image file {filename} already exists. Skipping download.")
         return
 
-    # Check if this is an Apple Music URL
-    if "mzstatic.com" in url:
-        for attempt in range(retries):
-            try:
-                logging.info(f"Downloading Apple Music image to {filename} (Attempt {attempt + 1})")
-                urlretrieve(url, filename)
-                break
-            except Exception as e:
-                logging.error(f'Unable to download Apple Music image {url}, error {e}')
-                if attempt < retries - 1:
-                    time.sleep(delay)
-                else:
-                    logging.error(f'Failed to download Apple Music image {url} after {retries} attempts')
-    else:
-        # For Discogs images, just track them for manual download
-        if not hasattr(download_image, 'missing_images'):
-            download_image.missing_images = set()
-        download_image.missing_images.add((filename, url))
-        logging.info(f"Added Discogs image {filename} to missing images list")
+    for attempt in range(retries):
+        try:
+            logging.info(f"Downloading image from {url} to {filename} (Attempt {attempt + 1})")
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            with open(filename, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            logging.info(f"Successfully downloaded image to {filename}")
+            return
+        except Exception as e:
+            logging.error(f"Failed to download image from {url}, attempt {attempt + 1}: {str(e)}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                logging.error(f"Failed to download image after {retries} attempts")
+                raise
 
 def escape_quotes(text):
     """
@@ -229,24 +229,24 @@ def format_notes(notes):
     return notes.replace('\n', ' ').replace('\r', ' ')
 
 def format_tracklist(tracklist):
-    """
-    Formats the tracklist as a string with each track title and duration on a separate line.
-
+    """Formats the tracklist as a string with each track title on a separate line.
+    
     Args:
         tracklist (list): A list of dictionaries containing track information.
-
     Returns:
         str: The formatted tracklist as a string.
     """
     formatted_tracklist = []
-    for index, track in enumerate(tracklist, start=1):
-        title = track["title"]
-        duration = track["duration"]
-        if duration:
-            formatted_tracklist.append(f'{index}. {title} ({duration})')
-        else:
-            formatted_tracklist.append(f'{index}. {title}')
-    return "\n".join(formatted_tracklist)
+    for track in tracklist:
+        position = track.get("position", "")
+        title = track.get("title", "")
+        formatted_tracklist.append(f"| {position} | {title} |")
+    
+    # Add header and separator
+    header = "| Position | Title |"
+    separator = "|----------|--------|"
+    
+    return "\n".join([header, separator] + formatted_tracklist)
 
 
 def format_release_formats(release_formats):
@@ -331,13 +331,25 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
         f.write(rendered_content)
     logging.info(f"Saved artist file {artist_file_path}")
 
-def create_markdown_file(item_data):
-    """Create a markdown file for a release."""
+def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_overwrite=False):
+    """Creates a markdown file for the given album data and saves it in the output directory.
+    
+    Args:
+        item_data (dict): The data for the album.
+        output_dir (str or Path): The directory to save the markdown file in.
+        force_overwrite (bool): Whether to force overwrite existing markdown files.
+    """
     try:
         # Create output directory if it doesn't exist
         output_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
         os.makedirs(output_dir, exist_ok=True)
         
+        # Check if file exists and skip if not forcing overwrite
+        output_file = os.path.join(output_dir, 'index.md')
+        if os.path.exists(output_file) and not force_overwrite:
+            logging.info(f"Markdown file exists for {item_data['Title']}, skipping (use --overwrite-album to force update)")
+            return True
+
         # Get the basic info
         artist = item_data["Artist Name"]
         album_name = item_data["Album Title"]
@@ -378,7 +390,6 @@ def create_markdown_file(item_data):
         rendered_content = template.render(**template_vars)
         
         # Save the rendered content to the markdown file
-        output_file = os.path.join(output_dir, 'index.md')
         with open(output_file, 'w') as f:
             f.write(rendered_content)
             
@@ -475,88 +486,105 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         
         logging.info(f"Processing release: {release_id} - {release.title}")
         
-        # Get basic release information
-        item_data = {
-            'Title': release.title,
-            'Album Title': release.title,
-            'Artist Name': sanitize_artist_name(release.artists[0].name) if release.artists else 'Various',
-            'Artist Info': {
-                'name': sanitize_artist_name(release.artists[0].name),
-                'slug': sanitize_slug(release.artists[0].name)
-            } if release.artists else None,
-            'Release ID': release_id,
-            'Year': release.year,
-            'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
-            'Catalog Number': release.labels[0].data.get('catno') if release.labels else '',
-            'Label': release.labels[0].name if release.labels else '',
-            'Formats': release.formats,
-            'Release Formats': release.formats,
-            'Genres': release.genres,
-            'Genre': release.genres,
-            'Styles': release.styles if hasattr(release, 'styles') else [],
-            'Style': release.styles if hasattr(release, 'styles') else [],
-            'Notes': release.notes if hasattr(release, 'notes') else '',
-            'Track List': [{'position': track.position, 'title': track.title, 'duration': track.duration} for track in release.tracklist],
-            'Album Cover URL': None,  # Initialize as None, will set later
-            'All Images URLs': [],  # Initialize as empty list
-            'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
-            'Release URL': release.url,
-            'Release Date': release.year,
-            'Slug': sanitize_slug(f"{release.title}-{release_id}"),
-            'Date Added': item.data.get('date_added'),
-            'Rating': item.data.get('rating', 0),
-            'Wikipedia Summary': None,
-            'Wikipedia URL': None
-        }
-
-        # Try to get Apple Music data first for cover
-        if jwt_apple_music_token:
-            search_query = f"{item_data['Artist Name']} {release.title}"
-            apple_music_data = get_apple_music_data('albums', search_query, jwt_apple_music_token)
-            if apple_music_data and 'artwork' in apple_music_data['attributes']:
-                artwork_url = apple_music_data['attributes']['artwork']['url']
-                # Replace width and height with max resolution
-                artwork_url = artwork_url.replace('{w}', '2000').replace('{h}', '2000')
-                item_data['Album Cover URL'] = artwork_url
-                item_data['All Images URLs'].append(artwork_url)
-                logging.info("Using Apple Music artwork for cover")
-                item_data['Apple Music attributes'] = apple_music_data['attributes']
-
-        # If no Apple Music cover, use Discogs cover
-        if not item_data['Album Cover URL'] and hasattr(release, 'images') and release.images:
-            item_data['Album Cover URL'] = release.images[0]['resource_url']
-            item_data['All Images URLs'].extend([img['resource_url'] for img in release.images])
-            logging.info("Using Discogs artwork for cover")
-
-        # Get Wikipedia data
-        if item_data['Artist Name'].lower() != 'various':
-            try:
-                wiki_summary, wiki_url = get_wikipedia_data(
-                    f"{item_data['Artist Name']} {item_data['Title']} (album)",
-                    item_data['Title']
-                )
-                item_data['Wikipedia Summary'] = wiki_summary
-                item_data['Wikipedia URL'] = wiki_url
-            except Exception as e:
-                logging.error(f"Error getting Wikipedia data: {str(e)}")
-
-        # Create the output directory and download cover image
-        output_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Download cover image if it exists
-        if item_data['Album Cover URL']:
-            cover_filename = os.path.join(output_dir, f"{item_data['Slug']}.jpg")
-            if not os.path.exists(cover_filename):
-                logging.info(f"Downloading cover image from {item_data['Album Cover URL']}")
-                download_image(item_data['Album Cover URL'], cover_filename)
-            else:
-                logging.info(f"Cover image already exists at {cover_filename}")
+        # Check if we already have this release
+        cached_data = db_handler.get_release(release_id)
+        if cached_data:
+            logging.info(f"Found cached data for release {release_id}")
+            item_data = cached_data
         else:
-            logging.warning(f"No cover image found for release {release_id}")
+            # Add delay before fetching new data
+            time.sleep(DELAY)
+            logging.info(f"No cache found for release {release_id}, fetching new data")
+            
+            # Get basic release information
+            item_data = {
+                'Title': release.title,
+                'Album Title': release.title,
+                'Artist Name': sanitize_artist_name(release.artists[0].name if release.artists else 'Various'),
+                'Release ID': release_id,
+                'Year': release.year,
+                'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
+                'Catalog Number': release.labels[0].data.get('catno') if release.labels else '',
+                'Label': release.labels[0].name if release.labels else '',
+                'Formats': release.formats,
+                'Release Formats': release.formats,
+                'Genres': release.genres,
+                'Genre': release.genres,
+                'Styles': release.styles if hasattr(release, 'styles') else [],
+                'Style': release.styles if hasattr(release, 'styles') else [],
+                'Notes': release.notes if hasattr(release, 'notes') else '',
+                'Track List': [{'position': track.position, 'title': track.title} for track in release.tracklist],
+                'Album Cover URL': release.images[0]['resource_url'] if hasattr(release, 'images') and release.images else None,
+                'All Images URLs': [img['resource_url'] for img in release.images] if hasattr(release, 'images') else [],
+                'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
+                'Release URL': release.url,
+                'Release Date': release.year,
+                'Slug': sanitize_slug(f"{release.title}-{release_id}"),
+                'Date Added': item.data.get('date_added'),
+                'Rating': item.data.get('rating', 0),
+            }
+
+            # Save to database
+            logging.info(f"Saving release {release_id} to database")
+            db_handler.save_release(release_id, item_data)
+
+        # Check for album cover
+        release_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
+        cover_filename = f"{item_data['Slug']}.jpg"
+        cover_path = os.path.join(release_dir, cover_filename)
+        
+        # Create directory if it doesn't exist
+        os.makedirs(release_dir, exist_ok=True)
+
+        # Check if cover image exists
+        if not os.path.exists(cover_path):
+            logging.info(f"Cover image missing for {item_data['Title']}, attempting to download")
+            
+            # Try Apple Music first
+            cover_downloaded = False
+            if jwt_apple_music_token:
+                try:
+                    apple_music_data = get_apple_music_data(
+                        'albums',
+                        f"{item_data['Artist Name']} {item_data['Title']}",
+                        jwt_apple_music_token
+                    )
+                    if apple_music_data and 'attributes' in apple_music_data and 'artwork' in apple_music_data['attributes']:
+                        artwork = apple_music_data['attributes']['artwork']
+                        width = 2000
+                        height = 2000
+                        apple_music_cover_url = artwork['url'].format(w=width, h=height)
+                        
+                        try:
+                            download_image(apple_music_cover_url, cover_path)
+                            logging.info(f"Successfully downloaded Apple Music cover for {item_data['Title']}")
+                            cover_downloaded = True
+                        except Exception as e:
+                            logging.error(f"Failed to download Apple Music cover: {str(e)}")
+                except Exception as e:
+                    logging.error(f"Error getting Apple Music data: {str(e)}")
+
+            # Fall back to Discogs if Apple Music failed
+            if not cover_downloaded and item_data['Album Cover URL']:
+                try:
+                    download_image(item_data['Album Cover URL'], cover_path)
+                    logging.info(f"Successfully downloaded Discogs cover for {item_data['Title']}")
+                    cover_downloaded = True
+                except Exception as e:
+                    logging.error(f"Failed to download Discogs cover: {str(e)}")
+
+            # Use missing cover if both failed
+            if not cover_downloaded:
+                missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+                try:
+                    download_image(missing_cover_url, cover_path)
+                    logging.info(f"Using missing cover for {item_data['Title']}")
+                except Exception as e:
+                    logging.error(f"Failed to download missing cover: {str(e)}")
 
         # Create markdown file
-        create_markdown_file(item_data)
+        logging.info(f"Creating markdown file for release {release_id}")
+        create_markdown_file(item_data, force_overwrite=args.overwrite_album)
 
         return item_data
 
@@ -610,6 +638,7 @@ def main():
     parser.add_argument('--migrate-artists', action='store_true', help='Migrate artist data from releases to artists table')
     parser.add_argument('--delay', type=int, default=DEFAULT_DELAY, help=f'Delay between requests in seconds (default: {DEFAULT_DELAY})')
     parser.add_argument('--regenerate-artist', type=str, help='Regenerate specific artist page (provide artist name)')
+    parser.add_argument('--overwrite-album', action='store_true', help='Force overwrite existing album markdown files')
     args = parser.parse_args()
 
     # Set up logging
@@ -890,6 +919,8 @@ def main():
                 )
 
                 if item_data:
+                    # Create markdown file with overwrite flag
+                    create_markdown_file(item_data, force_overwrite=args.overwrite_album)
                     logging.info(f"Successfully processed release: {item_data.get('Title', 'Unknown Title')}")
                 else:
                     logging.warning(f"Failed to process release {item.release.id}: {item.release.title}")

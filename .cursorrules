@@ -63,6 +63,24 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 
 # Scratchpad
 
+## Album Processing Fixes
+
+Task: Fix album image handling and track duration display
+
+Issues to Fix:
+1. Album cover image handling:
+   - Should try Apple Music first (2000x2000)
+   - Fall back to Discogs if no Apple Music image
+   - Remove Apple Music image from artwork list
+2. Remove track duration from track listing
+
+Changes Needed:
+[X] Update create_markdown_file() function:
+   - Fix cover image download logic
+   - Remove Apple Music image from artwork list
+[X] Update format_tracklist() function:
+   - Remove duration from track display
+
 ## Apple Music Integration Fix Analysis
 
 Task: Fix Apple Music integration that stopped working after moving to SQLite caching
@@ -97,7 +115,6 @@ Task: Fix artist page generation that stopped working
 Findings:
 1. Artist info handling was incorrect:
    - Wikipedia data wasn't being fetched properly
-   - Image URLs weren't being processed correctly
    - Profile text selection logic was flawed
    - Not fetching full artist data from Discogs
    - Not properly handling missing artist fields
