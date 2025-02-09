@@ -21,6 +21,19 @@
   </form>
   
   <table class="table table-striped">
+    {% if args.debug_data %}
+    <!-- Debug: Show first release data -->
+    {% if releases %}
+    <tr>
+      <td colspan="5">
+        <details>
+          <summary>Debug: First Release Data</summary>
+          <pre>{{ releases[0] | tojson(indent=2) }}</pre>
+        </details>
+      </td>
+    </tr>
+    {% endif %}
+    {% endif %}
     <thead>
       <tr>
         <th scope="col">Release ID</th>

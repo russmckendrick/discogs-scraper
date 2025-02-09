@@ -3,9 +3,15 @@ import shutil
 import json
 from datetime import datetime
 import logging
+import argparse
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from db_handler import DatabaseHandler
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Run the Vinyl Collection Manager web application')
+parser.add_argument('--debug-data', action='store_true', help='Enable data debugging output')
+args = parser.parse_args()
 
 # Ensure necessary directories exist
 for folder in ['logs', 'backups']:
@@ -50,19 +56,35 @@ def load_json_filter(s):
 # Helper function to filter and sort releases
 def get_releases(query=None, sort_key=None):
     releases = db.get_all_releases()
+    if args.debug_data:
+        logger.info(f"Raw releases type: {type(releases)}")
+        if releases:
+            logger.info(f"First release: {json.dumps(next(iter(releases)) if isinstance(releases, (list, set, dict)) else releases, indent=2)}")
+    
     # Convert release data to list if not already
     if not isinstance(releases, list):
         releases = list(releases)
-    # Ensure every item is a dictionary.
+    
+    # Ensure every item is a dictionary and contains the full release data
     processed_releases = []
     for r in releases:
         if isinstance(r, int):
-            # If the release record is an int, wrap it in a dict with "id" key.
-            processed_releases.append({"id": r})
+            # If we only got an ID, fetch the full release data
+            full_release = db.get_release(r)
+            if full_release:
+                processed_releases.append(full_release)
+            else:
+                processed_releases.append({"Release ID": r})
         elif isinstance(r, dict):
             processed_releases.append(r)
         else:
             processed_releases.append({})
+    
+    if args.debug_data:
+        logger.info(f"Processed releases count: {len(processed_releases)}")
+        if processed_releases:
+            logger.info(f"First processed release: {json.dumps(processed_releases[0], indent=2)}")
+    
     # Filter by query if provided
     if query:
         query_lower = query.lower()
@@ -71,6 +93,7 @@ def get_releases(query=None, sort_key=None):
             if (r.get("Artist Name", "").lower().find(query_lower) != -1 or 
                 r.get("Album Title", "").lower().find(query_lower) != -1)
         ]
+    
     # Default sorting: use Date Added descending if no sort_key provided.
     if not sort_key:
         sort_key = "Date Added"
@@ -83,6 +106,7 @@ def get_releases(query=None, sort_key=None):
         processed_releases.sort(key=lambda r: parse_date(r.get("Date Added", "1970-01-01T00:00:00")), reverse=True)
     else:
         processed_releases.sort(key=lambda r: r.get(sort_key, ""))
+    
     return processed_releases
 
 @app.route("/")
@@ -90,7 +114,7 @@ def index():
     query = request.args.get('q', '')
     sort_key = request.args.get('sort', '')
     releases = get_releases(query=query, sort_key=sort_key)
-    return render_template("index.html", releases=releases, query=query, sort_key=sort_key)
+    return render_template("index.html", releases=releases, query=query, sort_key=sort_key, args=args)
 
 @app.route("/release/new", methods=["GET", "POST"])
 def new_release():
