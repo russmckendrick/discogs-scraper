@@ -35,7 +35,8 @@ from utils import (
     format_track_duration,
     format_track_list,
     format_release_formats,
-    generate_artist_page
+    generate_artist_page,
+    download_image
 )
 import re
 
@@ -162,44 +163,6 @@ def get_apple_music_data(search_type, query, token):
     except Exception as e:
         logging.error(f"Error querying Apple Music API: {str(e)}")
         return None
-
-def download_image(url, filename, retries=3, delay=5):
-    """
-    Downloads an image from the given URL.
-    
-    Args:
-        url (str): The URL of the image to download.
-        filename (str): The path and name of the file to save the image to.
-        retries (int, optional): Number of retries for downloads. Defaults to 3.
-        delay (int, optional): Delay between retries in seconds. Defaults to 5.
-    """
-    folder_path = Path(filename).parent
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-    if os.path.exists(filename):
-        logging.info(f"Image file {filename} already exists. Skipping download.")
-        return
-
-    for attempt in range(retries):
-        try:
-            logging.info(f"Downloading image from {url} to {filename} (Attempt {attempt + 1})")
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            
-            with open(filename, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            logging.info(f"Successfully downloaded image to {filename}")
-            return
-        except Exception as e:
-            logging.error(f"Failed to download image from {url}, attempt {attempt + 1}: {str(e)}")
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                logging.error(f"Failed to download image after {retries} attempts")
-                raise
 
 def escape_quotes(text):
     """

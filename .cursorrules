@@ -104,8 +104,8 @@ The goal is to help you maintain a big picture as well as the progress of the ta
       Remove `format_tracklist()` from `discogs_scraper.py` and update the code to use `format_track_list()` from `utils.py`.
 - [X] **Unify release format formatting:**  
       Remove the duplicate `format_release_formats()` from `discogs_scraper.py` and consolidate functionality to use the version from `utils.py`.
-- [ ] **Centralize image downloading:**  
-      Merge `download_image()` in `discogs_scraper.py` and `download_artist_image()` in `utils.py` into a single, generic image download function in `utils.py`, with optional headers as needed.
+- [X] **Centralize image downloading:**  
+      Move `download_image()` from `discogs_scraper.py` into `utils.py` (keeping `download_artist_image()` as is) so that both image downloading functions are centralized.
 - [X] **Unify artist markdown generation:**  
       Consolidate `create_artist_markdown_file()` in `discogs_scraper.py` and `generate_artist_page()` in `db_handler.py` into one common function (potentially moved to `utils.py`).
 - [ ] **Consistent progress tracking:**  
