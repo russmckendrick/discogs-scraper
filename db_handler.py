@@ -327,19 +327,18 @@ class DatabaseHandler:
         if not text:
             return ""
         
-        # Replace problematic characters
-        text = text.replace('"', '\\"')  # Escape double quotes
-        text = text.replace("'", "\\'")  # Escape single quotes
-        text = text.replace("\n", " ")   # Replace newlines with spaces
-        text = text.replace("\r", " ")   # Replace carriage returns with spaces
-        
-        # Replace multiple spaces with single space
-        text = " ".join(text.split())
-        
         # Remove Discogs-specific formatting
         text = text.replace("[a=", "")
         text = text.replace("[l=", "")
         text = text.replace("]", "")
+        
+        # Normalize whitespace
+        lines = text.split("\n")
+        lines = [line.strip() for line in lines]
+        text = " ".join(lines)
+        
+        # Remove multiple spaces
+        text = " ".join(text.split())
         
         return text
 
