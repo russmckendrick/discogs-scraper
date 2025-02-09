@@ -350,39 +350,33 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
         slug = item_data["Slug"]
         cover_filename = f"{slug}.jpg"
         
-        # Store all image URLs
-        image_urls = []
-        if item_data.get("All Images URLs"):
-            image_urls = item_data["All Images URLs"]
-
         # Prepare template variables
         template_vars = {
-            'title': "{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
-            'artist_name': escape_quotes(artist),
-            'artist': sanitize_slug(f"{artist}"),
+            'title': f"{artist} - {album_name}",
+            'artist': artist,
+            'artist_slug': sanitize_slug(artist),
             'album_name': album_name,
-            'date': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-            'release_date': item_data.get('Release Date', ''),
+            'date_added': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             'release_id': release_id,
             'slug': slug,
-            'hideSummary': True,
-            'cover': {
-                'image': cover_filename,
-                'alt': f"{album_name} by {artist}",
-                'caption': f"{album_name} by {artist}"
-            },
-            'additional_images': image_urls,
+            'cover_filename': cover_filename,
+            'image_urls': item_data.get("All Images URLs", []),  # Template expects image_urls
             'genres': item_data.get('Genre', []),
             'styles': item_data.get('Style', []),
             'track_list': format_track_list(item_data.get('Track List', [])),
             'release_formats': format_release_formats(item_data.get('Release Formats', [])),
             'catalog_number': item_data.get('Catalog Number', ''),
             'label': item_data.get('Label', ''),
-            'release_notes': format_notes(item_data.get('Notes', '')),
+            'notes': format_notes(item_data.get('Notes', '')),
             'wikipedia_summary': item_data.get('Wikipedia Summary', ''),
-            'wikipedia_url': item_data.get('Wikipedia URL', '')
+            'wikipedia_url': item_data.get('Wikipedia URL', ''),
+            'apple_music_album_url': item_data.get('Apple Music attributes', {}).get('url', ''),
+            'apple_music_editorialNotes': item_data.get('Apple Music attributes', {}).get('editorialNotes', {}).get('standard', ''),
+            'apple_music_album_release_date': item_data.get('Apple Music attributes', {}).get('releaseDate', ''),
+            'spotify': item_data.get('Spotify ID', ''),
+            'release_url': item_data.get('Release URL', '')
         }
-        
+
         # Render markdown file using Jinja2 template
         env = Environment(loader=FileSystemLoader('.'))
         template = env.get_template('album_template.md')
