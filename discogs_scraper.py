@@ -475,8 +475,14 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
     """Process a single item from the collection."""
     try:
         release_id = item.release.id
+        release = item.release
         
-        logging.info(f"Processing release: {release_id} - {item.release.title}")
+        logging.info(f"Processing release: {release_id} - {release.title}")
+        
+        # Get original artist name without sanitization for display
+        artist_name = release.artists[0].name if release.artists else 'Various'
+        # Get sanitized version for URLs and slugs
+        artist_slug = sanitize_slug(artist_name)
         
         # Check if we already have this release
         cached_data = db_handler.get_release(release_id)
@@ -500,13 +506,16 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
             # Add delay before fetching new data
             time.sleep(DELAY)
             logging.info(f"No cache found for release {release_id}, fetching new data")
-            release = item.release
             
             # Get basic release information
             item_data = {
                 'Title': release.title,
                 'Album Title': release.title,
-                'Artist Name': sanitize_artist_name(release.artists[0].name if release.artists else 'Various'),
+                'Artist Name': artist_name,  # Use original name
+                'Artist Info': {
+                    'name': artist_name,  # Use original name
+                    'slug': artist_slug  # Use sanitized version for URLs
+                } if release.artists else None,
                 'Release ID': release_id,
                 'Year': release.year,
                 'Labels': [{'name': label.name, 'catno': label.data.get('catno')} for label in release.labels],
