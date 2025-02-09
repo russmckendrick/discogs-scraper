@@ -39,24 +39,42 @@ db = DatabaseHandler(db_path=DB_PATH)
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Adjust for your local environment
 
+# Register a custom template filter to parse JSON strings.
+@app.template_filter('load_json')
+def load_json_filter(s):
+    try:
+        return json.loads(s)
+    except Exception:
+        return {}
+
 # Helper function to filter and sort releases
 def get_releases(query=None, sort_key=None):
     releases = db.get_all_releases()
     # Convert release data to list if not already
     if not isinstance(releases, list):
         releases = list(releases)
+    # Ensure every item is a dictionary.
+    processed_releases = []
+    for r in releases:
+        if isinstance(r, int):
+            # If the release record is an int, wrap it in a dict with "id" key.
+            processed_releases.append({"id": r})
+        elif isinstance(r, dict):
+            processed_releases.append(r)
+        else:
+            processed_releases.append({})
     # Filter by query if provided
     if query:
-        query = query.lower()
-        releases = [
-            r for r in releases
-            if (r.get("Artist Name", "").lower().find(query) != -1 or 
-                r.get("Album Title", "").lower().find(query) != -1)
+        query_lower = query.lower()
+        processed_releases = [
+            r for r in processed_releases
+            if (r.get("Artist Name", "").lower().find(query_lower) != -1 or 
+                r.get("Album Title", "").lower().find(query_lower) != -1)
         ]
     # Sort by sort_key if provided
     if sort_key:
-        releases.sort(key=lambda r: r.get(sort_key, ""))
-    return releases
+        processed_releases.sort(key=lambda r: r.get(sort_key, ""))
+    return processed_releases
 
 @app.route("/")
 def index():
