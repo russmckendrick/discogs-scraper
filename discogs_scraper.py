@@ -332,13 +332,6 @@ def create_artist_markdown_file(artist_data, output_dir=ARTIST_DIRECTORY):
     logging.info(f"Saved artist file {artist_file_path}")
 
 def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_overwrite=False):
-    """Creates a markdown file for the given album data and saves it in the output directory.
-    
-    Args:
-        item_data (dict): The data for the album.
-        output_dir (str or Path): The directory to save the markdown file in.
-        force_overwrite (bool): Whether to force overwrite existing markdown files.
-    """
     try:
         # Create output directory if it doesn't exist
         output_dir = os.path.join(OUTPUT_DIRECTORY, item_data['Slug'])
@@ -355,39 +348,39 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
         album_name = item_data["Album Title"]
         release_id = str(item_data["Release ID"])
         slug = item_data["Slug"]
+        cover_filename = f"{slug}.jpg"
         
         # Store all image URLs
         image_urls = []
         if item_data.get("All Images URLs"):
-            for url in item_data["All Images URLs"]:
-                image_urls.append(url)
+            image_urls = item_data["All Images URLs"]
 
         # Prepare template variables
         template_vars = {
             'title': "{artist} - {album_name}".format(artist=escape_quotes(artist), album_name=album_name),
-            'artist': escape_quotes(artist),
-            'artist_slug': sanitize_slug(f"{artist}"),
+            'artist_name': escape_quotes(artist),
+            'artist': sanitize_slug(f"{artist}"),
             'album_name': album_name,
-            'date_added': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            'date': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            'release_date': item_data.get('Release Date', ''),
             'release_id': release_id,
             'slug': slug,
-            'cover_filename': f"{slug}.jpg",
+            'hideSummary': True,
+            'cover': {
+                'image': cover_filename,
+                'alt': f"{album_name} by {artist}",
+                'caption': f"{album_name} by {artist}"
+            },
+            'additional_images': image_urls,
             'genres': item_data.get('Genre', []),
             'styles': item_data.get('Style', []),
             'track_list': format_track_list(item_data.get('Track List', [])),
-            'release_date': item_data.get('Release Date', ''),
-            'release_url': item_data.get('Release URL', ''),
-            'label': item_data.get('Label', ''),
             'release_formats': format_release_formats(item_data.get('Release Formats', [])),
             'catalog_number': item_data.get('Catalog Number', ''),
-            'notes': item_data.get('Notes', ''),
-            'spotify': item_data.get('Spotify ID', ''),
-            'apple_music_album_url': item_data.get('Apple Music attributes', {}).get('url', ''),
-            'apple_music_editorialNotes': item_data.get('Apple Music attributes', {}).get('editorialNotes', {}).get('standard', ''),
-            'apple_music_album_release_date': item_data.get('Apple Music attributes', {}).get('releaseDate', ''),
+            'label': item_data.get('Label', ''),
+            'release_notes': format_notes(item_data.get('Notes', '')),
             'wikipedia_summary': item_data.get('Wikipedia Summary', ''),
-            'wikipedia_url': item_data.get('Wikipedia URL', ''),
-            'additional_images': image_urls,  # Pass all image URLs
+            'wikipedia_url': item_data.get('Wikipedia URL', '')
         }
         
         # Render markdown file using Jinja2 template
