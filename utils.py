@@ -6,6 +6,8 @@ import base64
 from difflib import SequenceMatcher
 import os
 import html2text
+from jinja2 import Environment, FileSystemLoader, Template
+import time  # needed for delays
 
 # Initialize html2text
 h = html2text.HTML2Text()
@@ -488,3 +490,175 @@ def format_release_formats(formats):
         format_strings.append(' '.join(parts))
         
     return ' | '.join(format_strings) 
+
+# -----------------------------------------------------------------------------
+# Artist Page Generation functions (moved from discogs_scraper.py and db_handler.py)
+# -----------------------------------------------------------------------------
+
+def tidy_text(text):
+    """Simple helper to tidy text (placeholder)."""
+    return text.strip() if text else ""
+
+def escape_quotes(text):
+    """
+    Escapes double quotes in a given text.
+    (Moved from discogs_scraper.py)
+    """
+    text = text.replace('"', '\\"')
+    text = re.sub(r'\s\(\d+\)', '', text)  # Remove brackets and numbers inside them
+    return text
+
+def download_image(url, filename, retries=3, delay=5):
+    """
+    Downloads an image from the given URL.
+    (Moved from discogs_scraper.py)
+    """
+    folder_path = Path(filename).parent
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    if os.path.exists(filename):
+        logging.info(f"Image file {filename} already exists. Skipping download.")
+        return
+
+    for attempt in range(retries):
+        try:
+            logging.info(f"Downloading image from {url} to {filename} (Attempt {attempt + 1})")
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            with open(filename, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            logging.info(f"Successfully downloaded image to {filename}")
+            return
+        except Exception as e:
+            logging.error(f"Failed to download image from {url}, attempt {attempt + 1}: {str(e)}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                logging.error(f"Failed to download image after {retries} attempts")
+                raise
+
+def create_artist_markdown_file(artist_data, output_dir):
+    """
+    Creates a markdown file for an artist.
+    (Moved from discogs_scraper.py)
+    """
+    if artist_data is None or 'name' not in artist_data:
+        logging.error('Artist data is missing or does not contain the key "name". Skipping artist.')
+        return
+
+    artist_name = artist_data["name"]
+    slug = sanitize_slug(artist_name)
+    folder_path = Path(output_dir) / slug
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    image_filename = f"{slug}.jpg"
+    image_path = folder_path / image_filename
+    missing_cover_url = "https://github.com/russmckendrick/records/raw/b00f1d9fc0a67b391bde0b0fa93284c8e64d3dfe/assets/images/missing.jpg"
+
+    # Handle artist images
+    if "images" in artist_data and artist_data["images"]:
+        artist_image_url = (
+            artist_data["images"][0]['resource_url']
+            if isinstance(artist_data["images"][0], dict)
+            else artist_data["images"][0]
+        )
+        download_image(artist_image_url, image_path)
+    else:
+        download_image(missing_cover_url, image_path)
+
+    # Check if the artist file already exists
+    artist_file_path = folder_path / "_index.md"
+
+    # Render markdown file using Jinja2 template
+    env = Environment(loader=FileSystemLoader('.'))
+    template = env.get_template('artist_template.md')
+
+    # Get profile text using tidy_text helper
+    profile = tidy_text(artist_data.get("profile", ""))
+    wikipedia_summary = tidy_text(artist_data.get("artist_wikipedia_summary", ""))
+
+    # Choose the longer text as the summary
+    summary = wikipedia_summary if len(wikipedia_summary or "") > len(profile or "") else profile
+
+    rendered_content = template.render(
+        name=escape_quotes(artist_name),
+        slug=slug,
+        profile=summary,
+        aliases=artist_data.get("aliases", []),
+        members=artist_data.get("members", []),
+        image=image_filename,
+        artist_wikipedia_url=artist_data.get('artist_wikipedia_url', '')
+    )
+
+    with open(artist_file_path, "w") as f:
+        f.write(rendered_content)
+    logging.info(f"Saved artist file {artist_file_path}")
+
+def sanitize_summary(text):
+    """
+    Sanitizes text for use in YAML front matter.
+    (Moved from db_handler.py)
+    """
+    if not text:
+        return ""
+    text = text.replace("[a=", "")
+    text = text.replace("[l=", "")
+    text = text.replace("]", "")
+    lines = text.split("\n")
+    lines = [line.strip() for line in lines]
+    text = " ".join(lines)
+    text = " ".join(text.split())
+    return text
+
+def generate_artist_page(artist_info, output_dir):
+    """
+    Generates artist page if it doesn't exist.
+    Returns True if successful or page exists, False on error.
+    (Moved and converted from db_handler.py)
+    """
+    artist_name = sanitize_artist_name(artist_info['name'])
+    artist_slug = sanitize_slug(artist_name)
+    artist_dir = os.path.join(output_dir, artist_slug)
+    index_file = os.path.join(artist_dir, '_index.md')
+    image_path = os.path.join(artist_dir, f"{artist_slug}.jpg")
+    
+    try:
+        os.makedirs(artist_dir, exist_ok=True)
+        image_filename = None
+        if artist_info.get('images'):
+            logging.info(f"Attempting to download artist image from {artist_info['images'][0]}")
+            if download_artist_image(artist_info['images'][0], image_path):
+                image_filename = f"{artist_slug}.jpg"
+                logging.info(f"Successfully downloaded artist image to {image_path}")
+            else:
+                logging.error(f"Failed to download artist image from {artist_info['images'][0]}")
+        else:
+            logging.warning(f"No images found for artist {artist_name}")
+        
+        with open('artist_template.md', 'r') as f:
+            template = Template(f.read())
+                
+        profile = sanitize_summary(artist_info.get('profile', ''))
+        
+        content = template.render(
+            title=artist_name,
+            summary=profile,
+            slug=artist_slug,
+            image=image_filename or "",
+            apple_music_artist_url=artist_info.get('apple_music_url', ''),
+            wikipedia_url=artist_info.get('artist_wikipedia_url', ''),
+            url=artist_info.get('url', '')
+        )
+        
+        with open(index_file, 'w') as f:
+            f.write(content)
+                
+        return True
+            
+    except Exception as e:
+        logging.error(f"Error generating artist page for {artist_name}: {str(e)}")
+        return False 

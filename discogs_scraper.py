@@ -34,7 +34,8 @@ from utils import (
     format_youtube_embed,
     format_track_duration,
     format_track_list,
-    format_release_formats
+    format_release_formats,
+    generate_artist_page
 )
 import re
 
@@ -831,7 +832,7 @@ def main():
                 
                 if verified_artist:
                     # Generate new artist page
-                    if db_handler.generate_artist_page(verified_artist, ARTIST_DIRECTORY):
+                    if generate_artist_page(verified_artist, ARTIST_DIRECTORY):
                         logging.info(f"Successfully regenerated artist page for {artist_data['name']}")
                     else:
                         logging.error(f"Failed to regenerate artist page for {artist_data['name']}")
