@@ -205,3 +205,34 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 - **Additional Helper Functions:**  
   - Includes functions for handling individual release processing (`process_item`), artist information retrieval (`get_artist_info`), and artist processing (`process_artist`), which work together under the main processing loop.
 
+# Execution Flow Overview
+
+1. **Initialization:**
+   - The script starts by parsing command-line arguments and importing all necessary modules.
+   - Configuration variables and paths (e.g., DB_PATH, OUTPUT_DIRECTORY, ARTIST_DIRECTORY) are defined.
+
+2. **Database Setup:**
+   - A DatabaseHandler instance is created.
+   - The database is initialized, creating tables for releases, artists, skip list, and the processed_index for progress tracking.
+
+3. **Progress Tracking Initialization:**
+   - The last processed index is retrieved from the database using `db_handler.get_last_processed_index()` so that processing can resume where it left off.
+
+4. **Collection Processing Loop:**
+   - The script iterates over the collection of releases (displayed via a progress bar).
+   - For each release:
+        - If the current index is less than the last processed index, the item is skipped.
+        - Otherwise, the script processes the release by calling functions (like `process_item()`) which handle API calls (Discogs, Apple Music, Wikipedia, Spotify) and caching.
+        - After processing each release, the current index is saved to the database using `db_handler.save_last_processed_index()`.
+
+5. **Artist Data Handling:**
+   - During release processing, artist data is verified and, if missing or outdated, is fetched from Discogs.
+   - Artist pages are generated using the consolidated function from `utils.py` (via `generate_artist_page()`).
+
+6. **Finalization:**
+   - Once all releases are processed, the progress tracking is reset (last processed index is set to 0 in the database).
+   - A final summary (including details on missing images and processed artists) is logged and/or printed.
+
+7. **Termination:**
+   - The script logs a summary message indicating completion and then exits.
+
