@@ -228,27 +228,6 @@ def format_notes(notes):
         return ""
     return notes.replace('\n', ' ').replace('\r', ' ')
 
-def format_tracklist(tracklist):
-    """Formats the tracklist as a markdown table with position and title.
-    
-    Args:
-        tracklist (list): A list of dictionaries containing track information.
-    Returns:
-        str: The formatted tracklist as a markdown table.
-    """
-    formatted_tracklist = []
-    for track in tracklist:
-        position = track.get("position", "")
-        title = track.get("title", "")
-        formatted_tracklist.append(f"| {position} | {title} |")
-    
-    # Add header and separator
-    header = "## Tracklisting\n| Position | Title |"
-    separator = "|----------|--------|"
-    
-    return "\n".join([header, separator] + formatted_tracklist)
-
-
 def format_release_formats(release_formats):
     """
     Formats the release formats as a comma-separated string.

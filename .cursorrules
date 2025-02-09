@@ -14,7 +14,7 @@ Here is some information about the projects files:
 - `artist_template.md` is a markdown file that contains the template for the artist pages.
 - `backups` is the directory for backups - this should be ignored.
 - `collection_cache.db` is the sqlite database that contains the collection cached data.
-- `collection_editor.py` is a Streamlit poweredweb app to edit the sqlite cache database.
+- `collection_editor.py` is a Streamlit powered web app to edit the sqlite cache database.
 - `db_handler.py` is a helper library for the database.
 - `discogs_scraper.py` is the main program.
 - `README.md` is the readme for the project.
@@ -47,119 +47,6 @@ The goal is to help you maintain a big picture as well as the progress of the ta
   - Store logs in dated files under logs/ directory
 - Read the file before you try to edit it.
 - Due to Cursor's limit, when you use `git` and `gh` and need to submit a multiline commit message, first write the message in a file, and then use `git commit -F <filename>` or similar command to commit. And then remove the file. Include "[Cursor] " in the commit message and PR title.
-
-## Cursor learned
-
-- For search results, ensure proper handling of different character encodings (UTF-8) for international queries
-- Add debug information to stderr while keeping the main output clean in stdout for better pipeline integration
-- When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
-- Comprehensive API logging best practices:
-  - Log all API requests with URLs and parameters
-  - Log response status codes and content for failures
-  - Include search terms and results for matching operations
-  - Track API rate limits and retries
-  - Use consistent log format: timestamp - level - message
-  - Separate logs by date for easier debugging
-
-# Scratchpad
-
-## Album Processing Fixes
-
-Task: Fix album image handling and track duration display
-
-Issues to Fix:
-1. Album cover image handling:
-   - Should try Apple Music first (2000x2000)
-   - Fall back to Discogs if no Apple Music image
-   - Remove Apple Music image from artwork list
-2. Remove track duration from track listing
-
-Changes Needed:
-[X] Update create_markdown_file() function:
-   - Fix cover image download logic
-   - Remove Apple Music image from artwork list
-[X] Update format_tracklist() function:
-   - Remove duration from track display
-
-## Apple Music Integration Fix Analysis
-
-Task: Fix Apple Music integration that stopped working after moving to SQLite caching
-
-Findings:
-1. Comparing working version (0f1a396) with current:
-   - Apple Music data structure changed
-   - Artist info handling was mixing Apple Music and Wikipedia data incorrectly
-   - No token verification was in place
-
-Changes Made:
-[X] Added Apple Music token verification
-[X] Fixed data structure for Apple Music attributes
-[X] Improved error handling and logging
-[X] Separated artist info from Apple Music data
-[X] Added proper attribute checks for Apple Music data
-[X] Added comprehensive logging for all API interactions:
-    - Request details (URLs, parameters)
-    - Response status and content
-    - Search results and matching
-    - Error handling and retries
-
-Next Steps:
-[x] Test with a few releases to verify fix
-[x] Monitor logs for Apple Music API responses
-[ ] Consider adding retry mechanism for failed Apple Music requests
-
-## Artist Page Generation Fix
-
-Task: Fix artist page generation that stopped working
-
-Findings:
-1. Artist info handling was incorrect:
-   - Wikipedia data wasn't being fetched properly
-   - Profile text selection logic was flawed
-   - Not fetching full artist data from Discogs
-   - Not properly handling missing artist fields
-   - Not properly calling process_artist function
-   - Not maintaining processed artists set
-
-Changes Made:
-[X] Fixed artist info retrieval from Discogs
-[X] Added full artist data fetching using artist ID
-[X] Added fallback for basic artist info if full fetch fails
-[X] Separated Wikipedia data handling for artists
-[X] Improved image URL handling
-[X] Fixed profile/summary text selection
-[X] Added proper error handling and logging
-[X] Added proper artist page generation in process_item
-[X] Added processed artists tracking
-[X] Added --artists-only flag for regenerating just artist pages
-[X] Added artists table to database
-[X] Added functions to save/get artist data
-[X] Modified process_item to cache artist info separately
-[X] Added migration function to populate artists table from releases
-[X] Fixed artist data extraction from releases
-[X] Added better error handling and logging for migration
-
-Next Steps:
-[X] Test database schema changes
-[X] Add migration function for artist data
-[X] Fix artist data extraction from releases
-[X] Run migration and verify data
-[X] Remove data deletion from migration script
-[X] Update artist page generation:
-    [X] Add image handling logic (Apple Music 2000x2000 -> Discogs)
-    [X] Add skip logic for existing _index.md files
-    [X] Update profile source priority (Apple Music -> Discogs -> Wikipedia)
-    [X] Keep existing sanitization and markdown formatting
-[X] Add --regenerate-artist command to force regenerate specific artist
-[ ] Add artist verification during release processing
-[ ] Add function to refresh artist cache
-[ ] Add periodic cleanup of old artist data
-[ ] Test artist page generation with various artists
-[ ] Verify image downloads are working
-[ ] Check artist template rendering
-[ ] Add retry mechanism for artist data fetching
-[ ] Consider caching artist data separately
-[ ] Add cleanup of processed_artists set periodically
 
 ## Lessons Learned
 
@@ -209,4 +96,20 @@ Next Steps:
    - get_best_artist_profile: Formats artist profiles with proper markdown
    - Added proper error handling and logging for API calls
    - Added rate limit and token validation checks
+
+# Scratchpad
+
+## TODO Tasks
+- [ ] **Merge duplicate functions:**  
+      Remove `format_tracklist()` from `discogs_scraper.py` and update the code to use `format_track_list()` from `utils.py`.
+- [ ] **Unify release format formatting:**  
+      Remove the duplicate `format_release_formats()` from `discogs_scraper.py` and consolidate functionality to use the version from `utils.py`.
+- [ ] **Centralize image downloading:**  
+      Merge `download_image()` in `discogs_scraper.py` and `download_artist_image()` in `utils.py` into a single, generic image download function in `utils.py`, with optional headers as needed.
+- [ ] **Unify artist markdown generation:**  
+      Consolidate `create_artist_markdown_file()` in `discogs_scraper.py` and `generate_artist_page()` in `db_handler.py` into one common function (potentially moved to `utils.py`).
+- [ ] **Consistent progress tracking:**  
+      Replace file-based last processed index tracking with the database-based method in the `processed_index` table.
+- [ ] **Review sanitization helpers:**  
+      Evaluate functions like `escape_quotes()` and `format_notes()` for potential consolidation into `utils.py` to ensure consistent text/sanitization handling across modules.
 
