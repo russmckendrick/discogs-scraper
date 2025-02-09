@@ -352,9 +352,9 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
         
         # Prepare template variables
         template_vars = {
-            'title': f"{artist} - {album_name}",  # Original artist name
-            'artist': artist,  # Original artist name
-            'artist_slug': sanitize_slug(artist),  # Sanitized for URLs
+            'title': f"{artist} - {album_name}",
+            'artist': artist,
+            'artist_slug': sanitize_slug(artist),
             'album_name': album_name,
             'date_added': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             'release_id': release_id,
@@ -513,7 +513,7 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                 'Styles': release.styles if hasattr(release, 'styles') else [],
                 'Style': release.styles if hasattr(release, 'styles') else [],
                 'Notes': release.notes if hasattr(release, 'notes') else '',
-                'Track List': release.tracklist,
+                'Track List': [{'position': track.position, 'title': track.title} for track in release.tracklist],
                 'Album Cover URL': release.images[0]['resource_url'] if hasattr(release, 'images') and release.images else None,
                 'All Images URLs': [img['resource_url'] for img in release.images] if hasattr(release, 'images') and release.images else [],
                 'Videos': [{'url': video.url, 'title': video.title} for video in release.videos] if hasattr(release, 'videos') else [],
@@ -522,14 +522,15 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                 'Slug': sanitize_slug(f"{release.title}-{release_id}"),
                 'Date Added': item.data.get('date_added'),
                 'Rating': item.data.get('rating', 0),
+                'apple_music_album_url': None,  # Initialize to None
+                'spotify': None  # Initialize to None
             }
 
             # Save to database
             db_data = item_data.copy()
-            # Convert tracklist to simple dict for storage - store both position and number
+            # Convert tracklist to simple dict for storage
             db_data['Track List'] = [{
                 'position': t.position,
-                'number': t.position,  # Store as both for backwards compatibility
                 'title': t.title
             } for t in release.tracklist]
             logging.info(f"Saving release {release_id} to database")
@@ -556,20 +557,19 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                         f"{item_data['Artist Name']} {item_data['Title']}",
                         jwt_apple_music_token
                     )
-                    if apple_music_data and 'attributes' in apple_music_data and 'artwork' in apple_music_data['attributes']:
-                        artwork = apple_music_data['attributes']['artwork']
-                        width = 2000
-                        height = 2000
-                        apple_music_cover_url = artwork['url'].format(w=width, h=height)
-                        
-                        try:
-                            download_image(apple_music_cover_url, cover_path)
-                            logging.info(f"Successfully downloaded Apple Music cover for {item_data['Title']}")
-                            cover_downloaded = True
-                        except Exception as e:
-                            logging.error(f"Failed to download Apple Music cover: {str(e)}")
+                    if apple_music_data and 'attributes' in apple_music_data:
+                        item_data['Apple Music attributes'] = apple_music_data['attributes']
+                        # Set the URL directly from attributes
+                        item_data['apple_music_album_url'] = apple_music_data['attributes'].get('url')
+                        cover_downloaded = True
                 except Exception as e:
                     logging.error(f"Error getting Apple Music data: {str(e)}")
+
+            # If no Apple Music URL, try Spotify
+            if not item_data.get('apple_music_album_url') and spotify_token:
+                spotify_id = get_spotify_id(item_data['Artist Name'], item_data['Title'], spotify_token)
+                if spotify_id:
+                    item_data['spotify'] = spotify_id
 
             # Fall back to Discogs if Apple Music failed
             if not cover_downloaded and item_data['Album Cover URL']:

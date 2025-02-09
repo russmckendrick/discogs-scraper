@@ -43,7 +43,7 @@ styles: [{% for style in styles %}"{{ style }}"{% if not loop.last %}, {% endif 
 ## Tracklisting
 {{ track_list }}
 
-{% if apple_music_album_url != None -%}
+{% if apple_music_album_url %}
 ## Apple Music
 {% raw %}{{< applemusic url="{% endraw %}{{ apple_music_album_url }}{% raw %}" >}}{% endraw %}<br>
 {% elif spotify %}

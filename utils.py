@@ -445,8 +445,9 @@ def format_track_list(tracklist):
     
     # Add each track
     for track in tracklist:
-        position = track.position if hasattr(track, 'position') else ''
-        title = track.title if hasattr(track, 'title') else ''
+        # Try position first, fall back to number
+        position = track.get('position', '') or track.get('number', '')
+        title = track.get('title', '')
         table += f"| {position} | {title} |\n"
         
     return table
