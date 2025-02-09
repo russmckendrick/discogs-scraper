@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{% if is_new %}New Release{% else %}Release {{ release_id }} Details{% endif %}{% endblock %}
+{% block content %}
+  <h1 class="mb-4">{% if is_new %}New Release{% else %}Release {{ release_id }} Details{% endif %}</h1>
+  
+  <form method="POST">
+    {% if is_new %}
+      <div class="mb-3">
+        <label for="release_id" class="form-label">Release ID</label>
+        <input type="number" class="form-control" name="release_id" required>
+      </div>
+    {% endif %}
+    
+    <div class="mb-3">
+      <label for="release_json" class="form-label">Release Data (JSON)</label>
+      <textarea class="form-control" name="release_json" rows="20">{{ release|default('{}') }}</textarea>
+      <div class="form-text">Edit the JSON record directly. (Ensure valid JSON!)</div>
+    </div>
+    
+    <button type="submit" class="btn btn-primary">{% if is_new %}Create Release{% else %}Save Changes{% endif %}</button>
+    {% if not is_new %}
+      <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to List</a>
+    {% endif %}
+  </form>
+  
+  {% if not is_new %}
+  <hr>
+  <h3>Preview</h3>
+  {% set data = release|safe|load_json %}
+  {% if data.get("Apple Music attributes", {}).get("artwork", {}).get("url") %}
+    {% set artwork_url = data["Apple Music attributes"]["artwork"]["url"].replace('{w}x{h}', '1425x1425') %}
+    <img src="{{ artwork_url }}" alt="Artwork" class="img-fluid mb-3">
+  {% elif data.get("Album Cover URL") %}
+    <img src="{{ data["Album Cover URL"] }}" alt="Album Cover" class="img-fluid mb-3">
+  {% endif %}
+  
+  <pre>{{ data | tojson(indent=2) }}</pre>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // A simple filter to parse JSON for preview (if needed)
+</script>
+{% endblock %} 

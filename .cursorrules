@@ -79,6 +79,15 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 - [x] **Review sanitization helpers:**  
       Evaluate functions like `escape_quotes()` and `format_notes()` for potential consolidation into `utils.py` to ensure consistent text/sanitization handling across modules.
 
+# New Editor Features
+The new web-based editor introduces the following enhancements:
+ - Built using Flask with a traditional multi-page layout.
+ - Provides full Create, Read, Update, Delete (CRUD) operations for the releases stored in `collection_cache.db`.
+ - Offers a searchable, sortable, and filterable index page for easy listing of releases.
+ - Features a detailed view page that allows direct editing of release JSON, displaying image previews (and video embeds when available).
+ - Includes a backup mechanism that copies the database to the `backups/` folder with a timestamp on application launch.
+ - Configures basic logging to save action logs in timed files under the `logs/` directory.
+
 # Functions Overview
 
 # **utils.py**

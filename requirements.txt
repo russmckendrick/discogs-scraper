@@ -7,4 +7,4 @@ wikipedia
 PyJWT
 tenacity
 html2text==2024.2.26
-streamlit>=1.29.0
+Flask>=2.0.0

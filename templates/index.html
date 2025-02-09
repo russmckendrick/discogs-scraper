@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Releases - Vinyl Collection Manager{% endblock %}
+{% block content %}
+  <h1 class="mb-4">Releases</h1>
+  
+  <form class="row g-3 mb-4" method="GET" action="{{ url_for('index') }}">
+    <div class="col-auto">
+      <input type="text" class="form-control" name="q" placeholder="Search by Artist or Album" value="{{ query }}">
+    </div>
+    <div class="col-auto">
+      <select class="form-select" name="sort">
+        <option value="">Sort by...</option>
+        <option value="Artist Name" {% if sort_key == "Artist Name" %}selected{% endif %}>Artist Name</option>
+        <option value="Album Title" {% if sort_key == "Album Title" %}selected{% endif %}>Album Title</option>
+        <option value="Release Date" {% if sort_key == "Release Date" %}selected{% endif %}>Release Date</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+  </form>
+  
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th scope="col">Release ID</th>
+        <th scope="col">Artist Name</th>
+        <th scope="col">Album Title</th>
+        <th scope="col">Release Date</th>
+        <th scope="col">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in releases %}
+      <tr>
+        <td>{{ r.get("id", "N/A") }}</td>
+        <td>{{ r.get("Artist Name", "N/A") }}</td>
+        <td>{{ r.get("Album Title", "N/A") }}</td>
+        <td>{{ r.get("Release Date", "N/A") }}</td>
+        <td>
+          <a href="{{ url_for('release_detail', release_id=r.get("id")) }}" class="btn btn-sm btn-info">View/Edit</a>
+          <form action="{{ url_for('delete_release', release_id=r.get("id")) }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete release {{ r.get('id') }}?');">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %} 
