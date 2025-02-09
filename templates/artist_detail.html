@@ -3,23 +3,187 @@
 {% block content %}
   <h1 class="mb-4">Artist Details</h1>
   
+  <h3>Preview</h3>
+  {% set data = artist|safe|load_json %}
+  
+  <div class="row">
+    <!-- Artist Image & Quick Links -->
+    <div class="col-md-4">
+      {% if data.get("apple_music_image") %}
+        {% set artwork_url = data['apple_music_image'].replace('{w}x{h}', '1425x1425') %}
+        <img src="{{ artwork_url }}" alt="Artist Image (Apple Music)" class="img-fluid mb-3">
+      {% elif data.get("images") and data["images"]|length > 0 %}
+        <img src="{{ data['images'][0] }}" alt="Artist Image (Discogs)" class="img-fluid mb-3">
+      {% endif %}
+
+      <!-- Quick Links -->
+      <div class="btn-group-vertical w-100 mb-3">
+        {% if data.get("url") %}
+          <a href="{{ data['url'] }}" target="_blank" class="btn btn-outline-primary">View on Discogs</a>
+        {% endif %}
+        {% if data.get("Apple Music attributes", {}).get("url") %}
+          <a href="{{ data['Apple Music attributes']['url'] }}" target="_blank" class="btn btn-outline-primary">View on Apple Music</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Artist Details -->
+    <div class="col-md-8">
+      <!-- Basic Info -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <h4>{{ data.get("name", "Unknown Artist") }}</h4>
+          {% if data.get("profile") %}
+            <div class="mt-3">
+              {{ data["profile"] | replace("\n", "<br>") | safe }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Apple Music Info -->
+      {% if data.get("Apple Music attributes") %}
+        <div class="card mb-3">
+          <div class="card-header">Apple Music</div>
+          <div class="card-body">
+            {% set apple = data["Apple Music attributes"] %}
+            {% if apple.get("genreNames") %}
+              <p><strong>Genres:</strong> {{ apple.get("genreNames", [])|join(", ") }}</p>
+            {% endif %}
+            {% if apple.get("editorialNotes", {}).get("standard") %}
+              <p>{{ apple["editorialNotes"]["standard"] | safe }}</p>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Wikipedia Info -->
+      {% if data.get("Wikipedia Summary") %}
+        <div class="card mb-3">
+          <div class="card-header">Wikipedia</div>
+          <div class="card-body">
+            <p>{{ data["Wikipedia Summary"] }}</p>
+            {% if data.get("Wikipedia URL") %}
+              <a href="{{ data['Wikipedia URL'] }}" target="_blank" class="btn btn-sm btn-outline-secondary">Read more on Wikipedia</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Members List -->
+      {% if data.get("members") %}
+        <div class="card mb-3">
+          <div class="card-header">Members</div>
+          <div class="card-body">
+            <ul class="list-group list-group-flush">
+              {% for member in data["members"] %}
+                <li class="list-group-item">{{ member }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Aliases -->
+      {% if data.get("aliases") %}
+        <div class="card mb-3">
+          <div class="card-header">Aliases</div>
+          <div class="card-body">
+            <ul class="list-group list-group-flush">
+              {% for alias in data["aliases"] %}
+                <li class="list-group-item">{{ alias }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <hr>
+  
   <form method="POST">
     <div class="mb-3">
       <label for="artist_json" class="form-label">Artist Data (JSON)</label>
-      <textarea class="form-control" name="artist_json" rows="20">{{ artist|default('{}') }}</textarea>
+      <textarea name="artist_json">{{ artist|default('{}') }}</textarea>
       <div class="form-text">Edit the JSON record directly. (Ensure valid JSON!)</div>
     </div>
     
     <button type="submit" class="btn btn-primary">Save Changes</button>
     <a href="{{ url_for('artists') }}" class="btn btn-secondary">Back to List</a>
   </form>
+
+  <!-- Raw Data Preview -->
+  <details class="mb-3">
+    <summary>Raw Data</summary>
+    <pre>{{ data | tojson(indent=2) }}</pre>
+  </details>
+
+{% endblock %}
+
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+  <!-- CodeMirror CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+  <style>
+    .CodeMirror {
+      height: auto;
+      min-height: 300px;
+      border: 1px solid #dee2e6;
+      border-radius: 0.25rem;
+    }
+    .cm-error {
+      background-color: #ff000020;
+    }
+  </style>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <!-- CodeMirror and its dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/json-lint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsonlint/1.6.0/jsonlint.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.css">
   
-  <hr>
-  <h3>Preview</h3>
-  {% set data = artist|safe|load_json %}
-  {% if data.get("image_url") %}
-    <img src="{{ data.get('image_url') }}" alt="Artist Image" class="img-fluid mb-3">
-  {% endif %}
-  
-  <pre>{{ data | tojson(indent=2) }}</pre>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var editor = CodeMirror.fromTextArea(document.querySelector('textarea[name="artist_json"]'), {
+        mode: "application/json",
+        theme: "monokai",
+        lineNumbers: true,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        gutters: ["CodeMirror-lint-markers"],
+        lint: true,
+        indentUnit: 2,
+        tabSize: 2,
+        lineWrapping: true,
+        extraKeys: {
+          "Ctrl-Q": function(cm) { cm.foldCode(cm.getCursor()); },
+          "Ctrl-Space": "autocomplete"
+        }
+      });
+      
+      // Update form value before submit
+      document.querySelector('form').addEventListener('submit', function() {
+        editor.save();
+      });
+      
+      // Auto-format JSON on load
+      try {
+        const json = editor.getValue();
+        const formatted = JSON.stringify(JSON.parse(json), null, 2);
+        editor.setValue(formatted);
+      } catch (e) {
+        console.error('JSON formatting failed:', e);
+      }
+    });
+  </script>
 {% endblock %} 

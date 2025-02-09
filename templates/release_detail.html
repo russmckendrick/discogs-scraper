@@ -3,6 +3,141 @@
 {% block content %}
   <h1 class="mb-4">{% if is_new %}New Release{% else %}Release {{ release_id }} Details{% endif %}</h1>
   
+  <h3>Preview</h3>
+  {% set data = release|safe|load_json %}
+  
+  <div class="row">
+    <!-- Album Cover -->
+    <div class="col-md-4">
+      {% if data.get("Apple Music attributes", {}).get("artwork", {}).get("url") %}
+        {% set artwork_url = data["Apple Music attributes"]["artwork"]["url"].replace('{w}x{h}', '1425x1425') %}
+        <img src="{{ artwork_url }}" alt="Album Cover (Apple Music)" class="img-fluid mb-3">
+      {% elif data.get("Album Cover URL") %}
+        <img src="{{ data['Album Cover URL'] }}" alt="Album Cover" class="img-fluid mb-3">
+      {% endif %}
+
+      <!-- Quick Links -->
+      <div class="btn-group-vertical w-100 mb-3">
+        {% if data.get("Release URL") %}
+          <a href="{{ data['Release URL'] }}" target="_blank" class="btn btn-outline-primary">View on Discogs</a>
+        {% endif %}
+        {% if data.get("Apple Music attributes", {}).get("url") %}
+          <a href="{{ data['Apple Music attributes']['url'] }}" target="_blank" class="btn btn-outline-primary">View on Apple Music</a>
+        {% endif %}
+        {% if data.get("Spotify ID") %}
+          <a href="https://open.spotify.com/album/{{ data['Spotify ID'] }}" target="_blank" class="btn btn-outline-success">Open in Spotify</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Release Details -->
+    <div class="col-md-8">
+      <!-- Basic Info -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <h4>{{ data.get("Artist Name") }} - {{ data.get("Album Title") }}</h4>
+          <p class="text-muted">
+            Released: {{ data.get("Release Date") }}<br>
+            Added: {{ data.get("Date Added") }}<br>
+            Label: {{ data.get("Label") }}{% if data.get("Catalog Number") %} ({{ data.get("Catalog Number") }}){% endif %}
+          </p>
+          
+          {% if data.get("Genre") %}
+            <p><strong>Genres:</strong> {{ data.get("Genre")|join(", ") }}</p>
+          {% endif %}
+          {% if data.get("Style") %}
+            <p><strong>Styles:</strong> {{ data.get("Style")|join(", ") }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Format Information -->
+      {% if data.get("Release Formats") %}
+        <div class="card mb-3">
+          <div class="card-header">Format Details</div>
+          <div class="card-body">
+            {% for format in data["Release Formats"] %}
+              <div class="mb-2">
+                <strong>{{ format.get("name") }}</strong>
+                {% if format.get("qty") %} ({{ format.get("qty") }}){% endif %}
+                {% if format.get("descriptions") %}
+                  <br>
+                  <small class="text-muted">{{ format["descriptions"]|join(", ") }}</small>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Track List -->
+      {% if data.get("Track List") %}
+        <div class="card mb-3">
+          <div class="card-header">Track List</div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Position</th>
+                    <th>Title</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for track in data["Track List"] %}
+                    <tr>
+                      <td>{{ track.get("number") or track.get("position") }}</td>
+                      <td>{{ track.get("title") }}</td>
+                      <td>{{ track.get("duration") }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Notes & Credits -->
+      {% if data.get("Notes") %}
+        <div class="card mb-3">
+          <div class="card-header">Notes</div>
+          <div class="card-body">
+            {{ data["Notes"] | replace("\n", "<br>") | safe }}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if data.get("Credits") %}
+        <div class="card mb-3">
+          <div class="card-header">Credits</div>
+          <div class="card-body">
+            {{ data["Credits"] | replace("\n", "<br>") | safe }}
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Videos -->
+      {% if data.get("Videos") %}
+        <div class="card mb-3">
+          <div class="card-header">Videos</div>
+          <div class="card-body">
+            {% for video in data["Videos"] %}
+              <div class="mb-3">
+                <a href="{{ video['url'] }}" target="_blank" class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-youtube"></i> {{ video['title'] }}
+                </a>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <hr>
+
   <form method="POST">
     {% if is_new %}
       <div class="mb-3">
@@ -13,7 +148,7 @@
     
     <div class="mb-3">
       <label for="release_json" class="form-label">Release Data (JSON)</label>
-      <textarea class="form-control" name="release_json" rows="20">{{ release|default('{}') }}</textarea>
+      <textarea name="release_json">{{ release|default('{}') }}</textarea>
       <div class="form-text">Edit the JSON record directly. (Ensure valid JSON!)</div>
     </div>
     
@@ -22,24 +157,78 @@
       <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to List</a>
     {% endif %}
   </form>
-  
-  {% if not is_new %}
-  <hr>
-  <h3>Preview</h3>
-  {% set data = release|safe|load_json %}
-  {% if data.get("Apple Music attributes", {}).get("artwork", {}).get("url") %}
-    {% set artwork_url = data["Apple Music attributes"]["artwork"]["url"].replace('{w}x{h}', '1425x1425') %}
-    <img src="{{ artwork_url }}" alt="Artwork" class="img-fluid mb-3">
-  {% elif data.get("Album Cover URL") %}
-    <img src="{{ data["Album Cover URL"] }}" alt="Album Cover" class="img-fluid mb-3">
-  {% endif %}
-  
-  <pre>{{ data | tojson(indent=2) }}</pre>
-  {% endif %}
+
+  <!-- Raw Data Preview -->
+  <details class="mb-3">
+    <summary>Raw Data</summary>
+    <pre>{{ data | tojson(indent=2) }}</pre>
+  </details>
+
+{% endblock %}
+
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+  <!-- CodeMirror CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+  <style>
+    .CodeMirror {
+      height: auto;
+      min-height: 300px;
+      border: 1px solid #dee2e6;
+      border-radius: 0.25rem;
+    }
+    .cm-error {
+      background-color: #ff000020;
+    }
+  </style>
 {% endblock %}
 
 {% block scripts %}
-<script>
-  // A simple filter to parse JSON for preview (if needed)
-</script>
+  {{ super() }}
+  <!-- CodeMirror and its dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/json-lint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsonlint/1.6.0/jsonlint.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.css">
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var editor = CodeMirror.fromTextArea(document.querySelector('textarea[name="release_json"]'), {
+        mode: "application/json",
+        theme: "monokai",
+        lineNumbers: true,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        gutters: ["CodeMirror-lint-markers"],
+        lint: true,
+        indentUnit: 2,
+        tabSize: 2,
+        lineWrapping: true,
+        extraKeys: {
+          "Ctrl-Q": function(cm) { cm.foldCode(cm.getCursor()); },
+          "Ctrl-Space": "autocomplete"
+        }
+      });
+      
+      // Update form value before submit
+      document.querySelector('form').addEventListener('submit', function() {
+        editor.save();
+      });
+      
+      // Auto-format JSON on load
+      try {
+        const json = editor.getValue();
+        const formatted = JSON.stringify(JSON.parse(json), null, 2);
+        editor.setValue(formatted);
+      } catch (e) {
+        console.error('JSON formatting failed:', e);
+      }
+    });
+  </script>
 {% endblock %} 

@@ -180,6 +180,9 @@ def delete_release(release_id):
 
 @app.route("/artists")
 def artists():
+    # Get search query
+    query = request.args.get('q', '')
+
     # Get all artists from the database
     all_artists = db.get_all_artists()
     
@@ -205,13 +208,38 @@ def artists():
             else:
                 processed_artists.append({"id": artist})
     
+    # Filter by search query if provided
+    if query:
+        query_lower = query.lower()
+        processed_artists = [
+            a for a in processed_artists
+            if (
+                str(a.get("id", "")).lower().find(query_lower) != -1 or
+                a.get("name", "").lower().find(query_lower) != -1 or
+                a.get("slug", "").lower().find(query_lower) != -1
+            )
+        ]
+    
     # Sort by artist name
     processed_artists.sort(key=lambda x: x.get("name", "").lower())
     
-    return render_template("artists.html", artists=processed_artists, args=args)
+    return render_template("artists.html", artists=processed_artists, query=query, args=args)
 
-@app.route("/artist/<int:artist_id>")
+@app.route("/artist/<int:artist_id>", methods=["GET", "POST"])
 def artist_detail(artist_id):
+    if request.method == "POST":
+        try:
+            artist_json = request.form.get("artist_json", "{}")
+            artist_data = json.loads(artist_json)
+            db.save_artist(artist_id, artist_data.get("name", ""), artist_data)
+            logger.info(f"Updated artist {artist_id}")
+            flash(f"Artist {artist_id} updated successfully.", "success")
+            return redirect(url_for("artist_detail", artist_id=artist_id))
+        except Exception as e:
+            logger.error(f"Error updating artist {artist_id}: {str(e)}")
+            flash(f"Error updating artist {artist_id}: {str(e)}", "danger")
+            return redirect(url_for("artist_detail", artist_id=artist_id))
+    
     artist = db.get_artist(artist_id)
     if not artist:
         flash(f"No artist found with ID {artist_id}.", "warning")

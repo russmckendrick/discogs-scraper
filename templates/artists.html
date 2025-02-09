@@ -5,7 +5,7 @@
   
   <form class="row g-3 mb-4" method="GET" action="{{ url_for('artists') }}">
     <div class="col-auto">
-      <input type="text" class="form-control" name="q" placeholder="Search by Artist Name" value="{{ request.args.get('q', '') }}">
+      <input type="text" class="form-control" name="q" placeholder="Search by Artist Name" value="{{ query }}">
     </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary">Search</button>
