@@ -7,22 +7,6 @@ This is a project to index my discogs collection, placing the data into the `web
 - The project uses the apple music API to get the data.
 - The project uses the spotify API to get the data.
 
-Here is some information about the projects files:
-
-- `.cursorrules` is the file that contains the rules for the project.
-- `album_template.md` is a markdown file that contains the template for the album pages.
-- `artist_template.md` is a markdown file that contains the template for the artist pages.
-- `backups` is the directory for backups - this should be ignored.
-- `collection_cache.db` is the sqlite database that contains the collection cached data.
-- `collection_editor.py` is a Streamlit powered web app to edit the sqlite cache database.
-- `db_handler.py` is a helper library for the database.
-- `discogs_scraper.py` is the main program.
-- `README.md` is the readme for the project.
-- `requirements.txt` is the file that contains the dependencies for the project.
-- `secrets.json` is a file that contains the secrets for the project.
-- `utils.py` is a helper library for the project.
-- `website` is the directory for the static website.
-
 # Instructions
 
 During your interaction with the user, if you find anything reusable in this project (e.g. version of a library, model name), especially about a fix to a mistake you made or a correction you received, you should take note in the `Lessons` section in the `.cursorrules` file so you will not make the same mistake again. 
@@ -50,52 +34,34 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 
 ## Lessons Learned
 
-1. API Integration:
-   - Always verify API tokens before starting main processing
-   - Keep API data structures separate (don't mix Apple Music with Wikipedia data)
-   - Add proper error handling and logging for each API call
-   - Handle Discogs API object attributes directly (e.g., video.url) rather than using get() method
+1. **API Integration & Data Handling:**
+   - Verify API tokens upfront and isolate API data structures for Discogs, Apple Music, Wikipedia, and Spotify.
+   - Implement robust error handling and detailed logging for all API interactions.
+   - Maintain validation of required fields in cached API responses.
 
-2. Data Structure:
-   - When caching API responses, maintain consistent data structure
-   - Document the expected data structure for each API integration
-   - Add validation for required fields
+2. **Progress Tracking & Data Structure:**
+   - Migrate progress tracking from a file-based system to a database-based method using a `processed_index` table for improved reliability.
+   - Ensure consistent and well-documented data structures when caching API responses.
 
-3. Debugging:
-   - Added more detailed logging for API calls
-   - Separated concerns between different data sources
-   - Added token verification to catch authentication issues early
+3. **Debugging & Logging:**
+   - Use appropriate logging levels (INFO, DEBUG, WARNING, ERROR) for comprehensive diagnostic details.
+   - Centralize logs in dated files to facilitate debugging and traceability.
 
-2. Need better artist data management:
-    - Should separate artist data into its own table
-    - Need to cache artist info independently of releases
-    - Need to handle artist updates separately
+4. **Artist Data Management & Page Generation:**
+   - Separate artist data management into its own domain (using dedicated tables) and handle updates individually.
+   - Consolidate artist page generation functions into `utils.py` to ensure consistent formatting, sanitization, and image handling.
+   - Retain existing sanitization and text formatting helpers to preserve consistency.
 
-4. Artist Page Generation:
-   - Don't overwrite existing artist images or pages
-   - Use high resolution images from Apple Music (2000x2000)
-   - Maintain consistent image and file naming using slugs
-   - Keep existing text formatting and sanitization
-   - Verify artists exist in cache during release processing
-   - Properly sanitize artist names by removing numbers in brackets
-   - Skip generation if both image and _index.md exist
+5. **Centralized Utility Functions:**
+   - Move duplicate and related functions (such as those for track lists, release formats, image downloading, and artist page generation) into `utils.py`.
+   - Enhance utility functions with proper error handling, logging, and optional parameters (e.g., custom headers for downloads).
 
-5. Data Safety:
-   - Never include data deletion in migration scripts
-   - Make data deletion a manual process
-   - Add checks before any destructive operations
+6. **Data Safety & Maintenance:**
+   - Avoid automated data deletion in migration scripts; perform any destructive operations manually after thorough checks.
 
-6. Utils Functions Added:
-   - get_spotify_token: Handles Spotify API authentication
-   - get_spotify_id: Searches for album IDs on Spotify
-   - extract_youtube_id: Extracts video IDs from YouTube URLs
-   - format_youtube_embed: Creates Hugo shortcodes for YouTube videos
-   - format_track_duration: Formats track durations consistently
-   - format_track_list: Creates markdown tables for track listings
-   - format_release_formats: Formats release format information
-   - get_best_artist_profile: Formats artist profiles with proper markdown
-   - Added proper error handling and logging for API calls
-   - Added rate limit and token validation checks
+7. **General Improvements:**
+   - Streamline the integration workflow by separating concerns across modules (utils, db_handler, and the main scraper).
+   - Continually review and update helper functions to reduce code duplication and avoid potential bugs.
 
 # Scratchpad
 
@@ -110,6 +76,132 @@ The goal is to help you maintain a big picture as well as the progress of the ta
       Consolidate `create_artist_markdown_file()` in `discogs_scraper.py` and `generate_artist_page()` in `db_handler.py` into one common function (potentially moved to `utils.py`).
 - [X] **Consistent progress tracking:**  
       Replaced file-based last processed index tracking with the database-based method in the `processed_index` table.
-- [ ] **Review sanitization helpers:**  
+- [x] **Review sanitization helpers:**  
       Evaluate functions like `escape_quotes()` and `format_notes()` for potential consolidation into `utils.py` to ensure consistent text/sanitization handling across modules.
+
+# Functions Overview
+
+# **utils.py**
+- **sanitize_slug(text):**  
+  - Converts a string into a URL-friendly slug by lowercasing the text and replacing unwanted characters.
+
+- **get_wikipedia_data(target, keyword):**  
+  - Retrieves a Wikipedia summary and URL for the given target using direct or disambiguated search.
+
+- **search_apple_music(query, search_type, token):**  
+  - Searches the Apple Music API for a given query filtered by type (e.g., artist or album).
+
+- **get_spotify_token(client_id, client_secret):**  
+  - Authenticates and retrieves an access token from Spotify using client credentials.
+
+- **get_spotify_id(artist, album_name, spotify_token):**  
+  - Retrieves the Spotify album ID based on the artist and album name.
+
+- **extract_youtube_id(url):**  
+  - Extracts and returns the YouTube video ID from a given URL.
+
+- **format_youtube_embed(video_id):**  
+  - Formats a YouTube video ID into a Hugo shortcode for embedding.
+
+- **format_track_duration(duration):**  
+  - Converts and formats a track's duration into MM:SS format.
+
+- **format_track_list(tracklist):**  
+  - Formats a list of track dictionaries into a markdown table.
+
+- **format_release_formats(formats):**  
+  - Formats details of release formats (e.g., name, quantity, descriptions) into a readable string.
+
+- **get_best_artist_profile(artist_info):**  
+  - Retrieves the best available artist profile text by prioritizing available data (Apple Music, Discogs, Wikipedia).
+
+- **sanitize_artist_name(name):**  
+  - Cleans up an artist's name by removing unnecessary numbers or formatting.
+
+- **download_artist_image(url, filename):**  
+  - Downloads an artist's image using specific HTTP headers.
+
+**Artist Page Generation Functions (in utils.py):**
+
+- **tidy_text(text):**  
+  - Tidies up text by stripping leading/trailing whitespace.
+
+- **escape_quotes(text):**  
+  - Escapes double quotes and removes certain bracketed number patterns from text.
+
+- **download_image(url, filename, retries, delay):**  
+  - Downloads an image from a URL with retry logic. (Centralized image downloader.)
+
+- **create_artist_markdown_file(artist_data, output_dir):**  
+  - Generates a markdown file for an artist using a Jinja2 template.
+
+- **sanitize_summary(text):**  
+  - Sanitizes a text summary for safe use in YAML front matter.
+
+- **generate_artist_page(artist_info, output_dir):**  
+  - Generates (or regenerates) an artist page based on provided artist data.
+
+# **db_handler.py**
+
+- **__init__(db_path, skip_file):**  
+  - Initializes the database handler, sets the database path and skip file, and calls the database initialization routine.
+
+- **init_db():**  
+  - Creates necessary tables including releases, artists, skip_releases, and processed_index.
+
+- **save_release(release_id, data):**  
+  - Saves or replaces a release record in the database.
+
+- **get_release(release_id):**  
+  - Retrieves a release's data from the database using its release ID.
+
+- **get_all_releases():**  
+  - Returns all saved releases from the database.
+
+- **get_skip_releases():**  
+  - Loads and returns a set of release IDs to be skipped.
+
+- **add_skip_release(release_id):**  
+  - Adds a release ID to the skip list.
+
+- **save_last_processed_index(index):**  
+  - Updates the last processed item index in the database (in the processed_index table).
+
+- **get_last_processed_index():**  
+  - Retrieves the last processed index from the database.
+
+- **save_artist(artist_id, name, data):**  
+  - Saves or updates an artist's data in the database.
+
+- **get_artist(artist_id):**  
+  - Retrieves a specific artist's data based on the artist ID.
+
+- **get_all_artists():**  
+  - Retrieves data for all artists stored in the database.
+
+- **migrate_artists_from_releases(discogs_client, jwt_apple_music_token):**  
+  - Extracts unique artists from release data, then fetches and saves fresh artist data.
+
+- **verify_artist(artist_name, artist_id, discogs_client):**  
+  - Checks if an artist exists in the database; if not, fetches data from Discogs and saves it.
+
+# **discogs_scraper.py**
+
+- **generate_apple_music_token(private_key_path, key_id, team_id):**  
+  - Generates a JWT token for accessing the Apple Music API.
+
+- **get_apple_music_data(search_type, query, token):**  
+  - Queries the Apple Music API to retrieve data based on the search type and query.
+
+- **escape_quotes(text):**  
+  - Escapes double quotes in a string (note: duplication exists, but may be phased out in favor of the utils version).
+
+- **format_notes(notes):**  
+  - Formats note strings by removing unwanted newline characters.
+
+- **main():**  
+  - The core orchestration function that parses command-line arguments, handles Discogs API rate limiting, processes the collection of releases, updates progress tracking via the database, manages artist page regeneration/migration, and logs operations.
+
+- **Additional Helper Functions:**  
+  - Includes functions for handling individual release processing (`process_item`), artist information retrieval (`get_artist_info`), and artist processing (`process_artist`), which work together under the main processing loop.
 
