@@ -809,11 +809,8 @@ def main():
     # Initialize processed artists set
     processed_artists = set()
 
-    # Load last processed index
-    last_processed_index = 0
-    if os.path.exists(LAST_PROCESSED_INDEX_FILE):
-        with open(LAST_PROCESSED_INDEX_FILE, 'r') as f:
-            last_processed_index = int(f.read().strip() or 0)
+    # Load last processed index using database
+    last_processed_index = db_handler.get_last_processed_index()
     logging.info(f"Starting processing from index: {last_processed_index}")
 
     # Adjust total items for progress bar to reflect remaining items
@@ -846,9 +843,8 @@ def main():
                 else:
                     logging.warning(f"Failed to process release {item.release.id}: {item.release.title}")
 
-                # Save progress even if processing failed
-                with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
-                    f.write(str(index))
+                # Save progress using database
+                db_handler.save_last_processed_index(index)
 
                 progress_bar.update(1)
 
@@ -858,9 +854,8 @@ def main():
                 progress_bar.update(1)
                 continue
 
-    # Zero out the last processed index file upon completion
-    with open(LAST_PROCESSED_INDEX_FILE, 'w') as f:
-        f.write('0')
+    # Reset the progress in the database upon completion
+    db_handler.save_last_processed_index(0)
     logging.info("Reset last processed index to 0 after completion.")
 
     # Print summary of missing images

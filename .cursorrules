@@ -108,8 +108,8 @@ The goal is to help you maintain a big picture as well as the progress of the ta
       Move `download_image()` from `discogs_scraper.py` into `utils.py` (keeping `download_artist_image()` as is) so that both image downloading functions are centralized.
 - [X] **Unify artist markdown generation:**  
       Consolidate `create_artist_markdown_file()` in `discogs_scraper.py` and `generate_artist_page()` in `db_handler.py` into one common function (potentially moved to `utils.py`).
-- [ ] **Consistent progress tracking:**  
-      Replace file-based last processed index tracking with the database-based method in the `processed_index` table.
+- [X] **Consistent progress tracking:**  
+      Replaced file-based last processed index tracking with the database-based method in the `processed_index` table.
 - [ ] **Review sanitization helpers:**  
       Evaluate functions like `escape_quotes()` and `format_notes()` for potential consolidation into `utils.py` to ensure consistent text/sanitization handling across modules.
 
