@@ -314,6 +314,35 @@ class DatabaseHandler:
                 
         return artist_info
 
+    def sanitize_summary(self, text):
+        """
+        Sanitizes text for use in YAML front matter.
+        
+        Args:
+            text (str): The text to sanitize
+            
+        Returns:
+            str: Sanitized text safe for YAML
+        """
+        if not text:
+            return ""
+        
+        # Replace problematic characters
+        text = text.replace('"', '\\"')  # Escape double quotes
+        text = text.replace("'", "\\'")  # Escape single quotes
+        text = text.replace("\n", " ")   # Replace newlines with spaces
+        text = text.replace("\r", " ")   # Replace carriage returns with spaces
+        
+        # Replace multiple spaces with single space
+        text = " ".join(text.split())
+        
+        # Remove Discogs-specific formatting
+        text = text.replace("[a=", "")
+        text = text.replace("[l=", "")
+        text = text.replace("]", "")
+        
+        return text
+
     def generate_artist_page(self, artist_info, output_dir):
         """
         Generates artist page if it doesn't exist.
@@ -345,9 +374,12 @@ class DatabaseHandler:
             with open('artist_template.md', 'r') as f:
                 template = Template(f.read())
                 
+            # Sanitize the profile text for YAML
+            profile = self.sanitize_summary(artist_info.get('profile', ''))
+            
             content = template.render(
                 title=artist_name,
-                summary=artist_info.get('profile', ''),
+                summary=profile,
                 slug=artist_slug,
                 image=image_filename or "",
                 apple_music_artist_url=artist_info.get('apple_music_url', ''),
