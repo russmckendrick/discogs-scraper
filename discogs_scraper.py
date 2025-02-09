@@ -344,7 +344,7 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
             return True
 
         # Get the basic info
-        artist = item_data["Artist Name"]
+        artist = item_data["Artist Name"]  # Original artist name (e.g., "Baxter Dury")
         album_name = item_data["Album Title"]
         release_id = str(item_data["Release ID"])
         slug = item_data["Slug"]
@@ -352,15 +352,17 @@ def create_markdown_file(item_data, output_dir=Path(OUTPUT_DIRECTORY), force_ove
         
         # Prepare template variables
         template_vars = {
-            'title': f"{artist} - {album_name}",
-            'artist': artist,
-            'artist_slug': sanitize_slug(artist),
+            'title': f"{artist} - {album_name}",  # Original artist name
+            'artist': artist,  # Original artist name
+            'artist_slug': sanitize_slug(artist),  # Sanitized for URLs
             'album_name': album_name,
             'date_added': datetime.strptime(item_data["Date Added"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             'release_id': release_id,
             'slug': slug,
             'cover_filename': cover_filename,
-            'image_urls': item_data.get("All Images URLs", []),  # Template expects image_urls
+            'image_urls': item_data.get("All Images URLs", []),
+            'alt': f"{album_name} by {artist}",  # Use original name (AC/DC)
+            'caption': f"{album_name} by {artist}",  # Use original name (AC/DC)
             'genres': item_data.get('Genre', []),
             'styles': item_data.get('Style', []),
             'track_list': format_track_list(item_data.get('Track List', [])),
@@ -479,42 +481,25 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
         
         logging.info(f"Processing release: {release_id} - {release.title}")
         
-        # Get original artist name without sanitization for display
+        # Get original artist name without any modification
         artist_name = release.artists[0].name if release.artists else 'Various'
-        # Get sanitized version for URLs and slugs
-        artist_slug = sanitize_slug(artist_name)
         
         # Check if we already have this release
         cached_data = db_handler.get_release(release_id)
         if cached_data:
             logging.info(f"Found cached data for release {release_id}")
-            # Create track objects from cached data
-            class Track:
-                def __init__(self, position, title):
-                    self.position = position
-                    self.title = title
-            
-            cached_data['Track List'] = [
-                Track(
-                    t.get('position', t.get('number', '')),  # Try position first, then number
-                    t.get('title', '')
-                ) 
-                for t in cached_data['Track List']
-            ]
+            # Use cached data but ensure original artist name is preserved
             item_data = cached_data
+            item_data['Artist Name'] = artist_name  # Ensure we use original name
         else:
-            # Add delay before fetching new data
-            time.sleep(DELAY)
-            logging.info(f"No cache found for release {release_id}, fetching new data")
-            
             # Get basic release information
             item_data = {
                 'Title': release.title,
                 'Album Title': release.title,
-                'Artist Name': artist_name,  # Use original name
+                'Artist Name': artist_name,  # Use original name (e.g., "AC/DC")
                 'Artist Info': {
-                    'name': artist_name,  # Use original name
-                    'slug': artist_slug  # Use sanitized version for URLs
+                    'name': artist_name,  # Use original name (e.g., "AC/DC")
+                    'slug': sanitize_slug(artist_name)  # Sanitized for URLs
                 } if release.artists else None,
                 'Release ID': release_id,
                 'Year': release.year,
@@ -604,8 +589,7 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                 except Exception as e:
                     logging.error(f"Failed to download missing cover: {str(e)}")
 
-        # Create markdown file
-        logging.info(f"Creating markdown file for release {release_id}")
+        # Create markdown file with force_overwrite flag
         create_markdown_file(item_data, force_overwrite=force_overwrite)
 
         return item_data
