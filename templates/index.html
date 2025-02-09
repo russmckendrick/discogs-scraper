@@ -12,7 +12,7 @@
         <option value="">Sort by...</option>
         <option value="Artist Name" {% if sort_key == "Artist Name" %}selected{% endif %}>Artist Name</option>
         <option value="Album Title" {% if sort_key == "Album Title" %}selected{% endif %}>Album Title</option>
-        <option value="Release Date" {% if sort_key == "Release Date" %}selected{% endif %}>Release Date</option>
+        <option value="Date Added" {% if sort_key == "Date Added" %}selected{% endif %}>Date Added</option>
       </select>
     </div>
     <div class="col-auto">
@@ -26,21 +26,21 @@
         <th scope="col">Release ID</th>
         <th scope="col">Artist Name</th>
         <th scope="col">Album Title</th>
-        <th scope="col">Release Date</th>
+        <th scope="col">Date Added</th>
         <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for r in releases %}
       <tr>
-        <td>{{ r.get("id", "N/A") }}</td>
-        <td>{{ r.get("Artist Name", "N/A") }}</td>
-        <td>{{ r.get("Album Title", "N/A") }}</td>
-        <td>{{ r.get("Release Date", "N/A") }}</td>
+        <td>{{ r.get("id") or r.get("Release ID") or "N/A" }}</td>
+        <td>{{ r.get("Artist Name") or r.get("artist_name") or "N/A" }}</td>
+        <td>{{ r.get("Album Title") or r.get("album_title") or "N/A" }}</td>
+        <td>{{ r.get("Date Added") or r.get("date_added") or "N/A" }}</td>
         <td>
-          <a href="{{ url_for('release_detail', release_id=r.get("id")) }}" class="btn btn-sm btn-info">View/Edit</a>
-          <form action="{{ url_for('delete_release', release_id=r.get("id")) }}" method="POST" style="display:inline;">
-            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete release {{ r.get('id') }}?');">Delete</button>
+          <a href="{{ url_for('release_detail', release_id=r.get("id") or r.get("Release ID")) }}" class="btn btn-sm btn-info">View/Edit</a>
+          <form action="{{ url_for('delete_release', release_id=r.get("id") or r.get("Release ID")) }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete release {{ r.get('id') or r.get('Release ID') }}?');">Delete</button>
           </form>
         </td>
       </tr>

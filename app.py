@@ -71,8 +71,17 @@ def get_releases(query=None, sort_key=None):
             if (r.get("Artist Name", "").lower().find(query_lower) != -1 or 
                 r.get("Album Title", "").lower().find(query_lower) != -1)
         ]
-    # Sort by sort_key if provided
-    if sort_key:
+    # Default sorting: use Date Added descending if no sort_key provided.
+    if not sort_key:
+        sort_key = "Date Added"
+    if sort_key == "Date Added":
+        def parse_date(date_str):
+            try:
+                return datetime.fromisoformat(date_str)
+            except Exception:
+                return datetime.min
+        processed_releases.sort(key=lambda r: parse_date(r.get("Date Added", "1970-01-01T00:00:00")), reverse=True)
+    else:
         processed_releases.sort(key=lambda r: r.get(sort_key, ""))
     return processed_releases
 
