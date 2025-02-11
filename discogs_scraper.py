@@ -475,9 +475,20 @@ def process_item(item, db_handler, jwt_apple_music_token=None, spotify_token=Non
                     )
                     if apple_music_data and 'attributes' in apple_music_data:
                         item_data['Apple Music attributes'] = apple_music_data['attributes']
-                        # Set the URL directly from attributes
                         item_data['apple_music_album_url'] = apple_music_data['attributes'].get('url')
-                        cover_downloaded = True
+                        
+                        # Get high-res artwork URL
+                        artwork_url = apple_music_data['attributes'].get('artwork', {}).get('url')
+                        if artwork_url:
+                            # Replace width (w) and height (h) placeholders with 2000
+                            artwork_url = artwork_url.replace('{w}', '2000').replace('{h}', '2000')
+                            logging.info(f"Attempting to download Apple Music artwork from: {artwork_url}")
+                            try:
+                                download_image(artwork_url, cover_path)
+                                cover_downloaded = True
+                                logging.info(f"Successfully downloaded Apple Music cover for {item_data['Title']}")
+                            except Exception as e:
+                                logging.error(f"Failed to download Apple Music cover: {str(e)}")
                 except Exception as e:
                     logging.error(f"Error getting Apple Music data: {str(e)}")
 

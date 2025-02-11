@@ -260,9 +260,91 @@ def get_spotify_id(artist, album_name, spotify_token):
         logging.error(f"Error querying Spotify API: {str(e)}")
         return None 
 
+def download_image(url, filename, headers=None, retries=3, delay=5):
+    """
+    Downloads an image from the given URL with proper headers and retry logic.
+    
+    Args:
+        url (str): The URL of the image to download
+        filename (str): The path where to save the image
+        headers (dict): Optional custom headers for the request
+        retries (int): Number of retry attempts
+        delay (int): Delay between retries in seconds
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if not url:
+        logging.error("No URL provided for image download")
+        return False
+
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    # Check if file already exists
+    if os.path.exists(filename):
+        logging.info(f"Image already exists at {filename}")
+        return True
+
+    # Set default headers if none provided
+    if headers is None:
+        headers = {
+            'User-Agent': 'DiscogsScraperApp/1.0 +https://github.com/russmckendrick/discogs-scraper'
+        }
+        
+        # Add source-specific headers if no custom headers provided
+        if 'api.music.apple.com' in url or 'mzstatic.com' in url:
+            headers.update({
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                'Referer': 'https://music.apple.com/'
+            })
+        elif 'discogs.com' in url:
+            headers.update({
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://www.discogs.com/'
+            })
+
+    for attempt in range(retries):
+        try:
+            logging.info(f"Downloading image from {url} to {filename} (Attempt {attempt + 1})")
+            response = requests.get(url, headers=headers, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            # Verify we got an image
+            content_type = response.headers.get('content-type', '')
+            if not content_type.startswith('image/'):
+                logging.error(f"Received non-image content type: {content_type}")
+                return False
+
+            # Save the image
+            with open(filename, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            # Verify file was created and has content
+            if os.path.exists(filename) and os.path.getsize(filename) > 0:
+                logging.info(f"Successfully downloaded image to {filename}")
+                return True
+            else:
+                logging.error(f"Downloaded file is empty or missing: {filename}")
+                return False
+
+        except Exception as e:
+            logging.error(f"Error downloading image (attempt {attempt + 1}): {str(e)}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                logging.error(f"Failed to download image after {retries} attempts")
+                return False
+
+    return False
+
 def download_artist_image(url, filename):
     """
-    Downloads an artist image from a URL.
+    Downloads an artist image from a URL with specific headers for artist images.
     
     Args:
         url (str): The URL of the image to download
@@ -275,7 +357,7 @@ def download_artist_image(url, filename):
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         
-        # Set proper headers for Discogs
+        # Set proper headers for artist images
         headers = {
             'User-Agent': 'DiscogsScraperApp/1.0 +https://github.com/russmckendrick/discogs-scraper',
             'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
@@ -284,19 +366,8 @@ def download_artist_image(url, filename):
             'Referer': 'https://www.discogs.com/'
         }
         
-        # Download the image
-        logging.info(f"Downloading artist image to {filename}")
-        response = requests.get(url, headers=headers, stream=True)
-        response.raise_for_status()
-        
-        # Save the image
-        with open(filename, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    
-        logging.info(f"Successfully downloaded artist image to {filename}")
-        return True
+        # Download the image using the common download function
+        return download_image(url, filename, headers=headers)
         
     except Exception as e:
         logging.error(f"Error downloading artist image from {url}: {str(e)}")
@@ -508,39 +579,6 @@ def escape_quotes(text):
     text = re.sub(r'\s\(\d+\)', '', text)  # Remove brackets and numbers inside them
     return text
 
-def download_image(url, filename, retries=3, delay=5):
-    """
-    Downloads an image from the given URL.
-    (Moved from discogs_scraper.py)
-    """
-    folder_path = Path(filename).parent
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-    if os.path.exists(filename):
-        logging.info(f"Image file {filename} already exists. Skipping download.")
-        return
-
-    for attempt in range(retries):
-        try:
-            logging.info(f"Downloading image from {url} to {filename} (Attempt {attempt + 1})")
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            
-            with open(filename, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            logging.info(f"Successfully downloaded image to {filename}")
-            return
-        except Exception as e:
-            logging.error(f"Failed to download image from {url}, attempt {attempt + 1}: {str(e)}")
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                logging.error(f"Failed to download image after {retries} attempts")
-                raise
-
 def create_artist_markdown_file(artist_data, output_dir):
     """
     Creates a markdown file for an artist.
@@ -631,7 +669,7 @@ def generate_artist_page(artist_info, output_dir):
         image_filename = None
         if artist_info.get('images'):
             logging.info(f"Attempting to download artist image from {artist_info['images'][0]}")
-            if download_artist_image(artist_info['images'][0], image_path):
+            if download_image(artist_info['images'][0], image_path):
                 image_filename = f"{artist_slug}.jpg"
                 logging.info(f"Successfully downloaded artist image to {image_path}")
             else:
