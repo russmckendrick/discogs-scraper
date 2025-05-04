@@ -6,6 +6,7 @@ album_name: "{{ album_name | replace('\"','') | safe }}"
 date: {{ date_added }}{% if apple_music_editorialNotes != None %}
 release_date: "{{ apple_music_album_release_date }}"{% endif %}
 release_id: "{{ release_id }}"
+apple_music_url: "{{ apple_music_album_url }}"
 slug: "{{ slug }}"
 hideSummary: true
 cover:
