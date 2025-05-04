@@ -28,12 +28,6 @@ genres: ["Rock"]
 styles: ["Alternative Rock", "Psychedelic Rock", "Stoner Rock"]
 ---
 
-
-        
-        
-    
-
-
 ## Tracklisting
 | Position | Title |
 |----------|--------|
