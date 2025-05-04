@@ -16,3 +16,5 @@ content
 .dbindex.json
 skip_releases.txt
 *pycache*
+random-record
+random-record/*
